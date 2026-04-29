@@ -3,6 +3,15 @@
     "paper": {
       "type": "http",
       "url": "http://127.0.0.1:29979/mcp"
+    },
+    "cherry-chrome-mcp": {
+      "type": "stdio",
+      "command": "pnpm",
+      "args": [
+        "dlx",
+        "github:brandon-fryslie/cherry-chrome-mcp"
+      ],
+      "env": {}
     }
   }
 }
