@@ -1,14 +1,20 @@
 const variant = process.env.APP_ENV || 'development';
-const name = {
+const defaultName = {
     development: "Happy (dev)",
     preview: "Happy (preview)",
     production: "Happy"
 }[variant];
-const bundleId = {
+// Local override: APP_DISPLAY_NAME=Scrappy pnpm prebuild
+const name = process.env.APP_DISPLAY_NAME || defaultName;
+const defaultBundleId = {
     development: "com.slopus.happy.dev",
     preview: "com.slopus.happy.preview",
     production: "com.ex3ndr.happy"
 }[variant];
+// Allow local builds to override bundle ID + Apple team without touching shared config.
+// e.g. IOS_BUNDLE_ID=com.brandonfryslie.happy.dev IOS_APPLE_TEAM_ID=9S8AZWJ949 pnpm ios:dev -d
+const bundleId = process.env.IOS_BUNDLE_ID || defaultBundleId;
+const iosAppleTeamId = process.env.IOS_APPLE_TEAM_ID;
 // const stagingElevenLabsAgentId = 'agent_7801k2c0r5hjfraa1kdbytpvs6yt';
 const productionElevenLabsAgentId = 'agent_6701k211syvvegba4kt7m68nxjmw';
 const elevenLabsAgentId = {
@@ -35,6 +41,7 @@ export default {
         ios: {
             supportsTablet: true,
             bundleIdentifier: bundleId,
+            ...(iosAppleTeamId ? { appleTeamId: iosAppleTeamId } : {}),
             config: {
                 usesNonExemptEncryption: false
             },
