@@ -12,6 +12,14 @@
         "github:brandon-fryslie/cherry-chrome-mcp"
       ],
       "env": {}
+    },
+    "electric-cherry": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "electric-cherry"
+      ],
+      "env": {}
     }
   }
 }
