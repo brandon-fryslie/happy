@@ -30,6 +30,7 @@ export default React.memo(function VoiceSettingsScreen() {
     const auth = useAuth();
     const [voiceAssistantLanguage] = useSettingMutable('voiceAssistantLanguage');
     const [voiceCustomAgentId, setVoiceCustomAgentId] = useSettingMutable('voiceCustomAgentId');
+    const [voiceCustomElevenLabsApiKey, setVoiceCustomElevenLabsApiKey] = useSettingMutable('voiceCustomElevenLabsApiKey');
     const [voiceBypassToken, setVoiceBypassToken] = useSettingMutable('voiceBypassToken');
     const [voiceUpsellOverride, setVoiceUpsellOverride] = useLocalSettingMutable('voiceUpsellOverride');
     const experiments = useSetting('experiments');
@@ -73,6 +74,21 @@ export default React.memo(function VoiceSettingsScreen() {
             setVoiceBypassToken(trimmed !== null);
         }
     }, [voiceCustomAgentId, setVoiceCustomAgentId, setVoiceBypassToken]);
+
+    const handleCustomElevenLabsApiKey = React.useCallback(async () => {
+        const value = await Modal.prompt(
+            t('settingsVoice.customElevenLabsApiKey'),
+            t('settingsVoice.customElevenLabsApiKeyDescription'),
+            {
+                defaultValue: voiceCustomElevenLabsApiKey ?? '',
+                placeholder: t('settingsVoice.customElevenLabsApiKeyPlaceholder'),
+            }
+        );
+        if (value !== null) {
+            const trimmed = value.trim() || null;
+            setVoiceCustomElevenLabsApiKey(trimmed);
+        }
+    }, [voiceCustomElevenLabsApiKey, setVoiceCustomElevenLabsApiKey]);
 
     const handleVoiceExperimentOverride = React.useCallback(() => {
         Modal.alert(
@@ -243,6 +259,14 @@ export default React.memo(function VoiceSettingsScreen() {
                     subtitle={voiceCustomAgentId ?? t('settingsVoice.customAgentIdNotSet')}
                     icon={<Ionicons name="key-outline" size={29} color="#FF9500" />}
                     onPress={handleCustomAgentId}
+                />
+                <Item
+                    title={t('settingsVoice.customElevenLabsApiKey')}
+                    subtitle={voiceCustomElevenLabsApiKey
+                        ? t('settingsVoice.customElevenLabsApiKeySet')
+                        : t('settingsVoice.customElevenLabsApiKeyNotSet')}
+                    icon={<Ionicons name="lock-closed-outline" size={29} color="#FF9500" />}
+                    onPress={handleCustomElevenLabsApiKey}
                 />
                 <Item
                     title={t('settingsVoice.bypassToken')}

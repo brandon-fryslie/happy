@@ -1,6 +1,8 @@
 import {
+    VoiceByoTokenResponseSchema,
     VoiceConversationResponseSchema,
     VoiceUsageResponseSchema,
+    type VoiceByoTokenResponse,
     type VoiceConversationResponse,
     type VoiceUsageResponse,
 } from '@slopus/happy-wire';
@@ -9,7 +11,7 @@ import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 import { config } from '@/config';
 
-export type { VoiceConversationResponse, VoiceUsageResponse };
+export type { VoiceByoTokenResponse, VoiceConversationResponse, VoiceUsageResponse };
 
 export async function fetchVoiceCredentials(
     credentials: AuthCredentials,
@@ -40,6 +42,35 @@ export async function fetchVoiceCredentials(
     }
 
     return VoiceConversationResponseSchema.parse(await response.json());
+}
+
+export async function fetchByoVoiceToken(
+    credentials: AuthCredentials,
+    agentId: string,
+    apiKey: string,
+): Promise<VoiceByoTokenResponse> {
+    const serverUrl = getServerUrl();
+
+    const response = await fetch(`${serverUrl}/v1/voice/byo-token`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json',
+            'X-Happy-Client': getHappyClientId(),
+        },
+        body: JSON.stringify({ agentId, apiKey }),
+    });
+
+    if (!response.ok) {
+        let detail = '';
+        try {
+            const body = await response.json() as { error?: string };
+            detail = body?.error ? `: ${body.error}` : '';
+        } catch {}
+        throw new Error(`BYO voice token request failed: ${response.status}${detail}`);
+    }
+
+    return VoiceByoTokenResponseSchema.parse(await response.json());
 }
 
 export async function fetchVoiceUsage(

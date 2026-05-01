@@ -32,7 +32,8 @@ export const SettingsSchema = z.object({
     reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
     voiceAssistantLanguage: z.string().nullable().describe('Preferred language for voice assistant (null for auto-detect)'),
     voiceCustomAgentId: z.string().nullable().describe('Custom ElevenLabs agent ID (null to use Happy default)'),
-    voiceBypassToken: z.boolean().describe('Bypass Happy server token and connect directly to ElevenLabs (requires custom agent ID)'),
+    voiceCustomElevenLabsApiKey: z.string().nullable().describe('Custom ElevenLabs API key for BYO agent — server uses it to mint conversation tokens'),
+    voiceBypassToken: z.boolean().describe('Bypass Happy server usage gating and mint via user-supplied ElevenLabs API key (requires custom agent ID + API key)'),
     preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
     recentMachinePaths: z.array(z.object({
         machineId: z.string(),
@@ -100,6 +101,7 @@ export const settingsDefaults: Settings = {
     reviewPromptLikedApp: null,
     voiceAssistantLanguage: null,
     voiceCustomAgentId: null,
+    voiceCustomElevenLabsApiKey: null,
     voiceBypassToken: false,
     preferredLanguage: null,
     recentMachinePaths: [],

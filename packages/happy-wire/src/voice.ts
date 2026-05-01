@@ -34,3 +34,18 @@ export const VoiceUsageResponseSchema = z.object({
 });
 
 export type VoiceUsageResponse = z.infer<typeof VoiceUsageResponseSchema>;
+
+export const VoiceByoTokenRequestSchema = z.object({
+    agentId: z.string().min(1),
+    apiKey: z.string().min(1),
+});
+
+export type VoiceByoTokenRequest = z.infer<typeof VoiceByoTokenRequestSchema>;
+
+export const VoiceByoTokenResponseSchema = z.object({
+    conversationToken: z.string(),
+    conversationId: z.string(),
+    agentId: z.string(),
+});
+
+export type VoiceByoTokenResponse = z.infer<typeof VoiceByoTokenResponseSchema>;
