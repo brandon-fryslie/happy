@@ -1,5 +1,5 @@
 import type { VoiceSession } from './types';
-import { fetchVoiceCredentials } from '@/sync/apiVoice';
+import { fetchByoVoiceToken, fetchVoiceCredentials } from '@/sync/apiVoice';
 import { sync } from '@/sync/sync';
 import { Modal } from '@/modal';
 import { TokenStorage } from '@/auth/tokenStorage';
@@ -47,27 +47,38 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     }
 
     try {
-        // Bypass Happy server token — only when user has their own custom agent
-        const { voiceBypassToken, voiceCustomAgentId } = storage.getState().settings;
-        if (voiceBypassToken && voiceCustomAgentId) {
-            console.log('[Voice] Bypassing token, custom agent ID:', voiceCustomAgentId);
-            currentSessionId = sessionId;
-            const conversationId = await voiceSession.startSession({
-                sessionId,
-                initialContext,
-                agentId: voiceCustomAgentId,
-            });
-            currentVoiceConversationId = conversationId;
-            currentVoiceSessionStartedAt = Date.now();
-            voiceSessionStarted = true;
-            return conversationId;
-        }
-
         const credentials = await TokenStorage.getCredentials();
         if (!credentials) {
             storage.getState().setRealtimeStatus('disconnected');
             Modal.alert(t('common.error'), t('errors.authenticationFailed'));
             return null;
+        }
+
+        // BYO bypass — user-supplied agent + API key. Server mints with the user's key,
+        // returning the same {conversationToken, conversationId, agentId} shape as the gated path.
+        const { voiceBypassToken, voiceCustomAgentId, voiceCustomElevenLabsApiKey } = storage.getState().settings;
+        if (voiceBypassToken && (!voiceCustomAgentId || !voiceCustomElevenLabsApiKey)) {
+            storage.getState().setRealtimeStatus('disconnected');
+            Modal.alert(
+                t('common.error'),
+                t('errors.voiceByoCredentialsMissing'),
+            );
+            return null;
+        }
+        if (voiceBypassToken && voiceCustomAgentId && voiceCustomElevenLabsApiKey) {
+            console.log('[Voice] BYO mint via server, agent:', voiceCustomAgentId);
+            const byo = await fetchByoVoiceToken(credentials, voiceCustomAgentId, voiceCustomElevenLabsApiKey);
+            currentSessionId = sessionId;
+            const startedConversationId = await voiceSession.startSession({
+                sessionId,
+                initialContext,
+                conversationToken: byo.conversationToken,
+                agentId: byo.agentId,
+            });
+            currentVoiceConversationId = byo.conversationId ?? startedConversationId;
+            currentVoiceSessionStartedAt = Date.now();
+            voiceSessionStarted = true;
+            return currentVoiceConversationId;
         }
 
         const response = await fetchVoiceCredentials(credentials, sessionId);
