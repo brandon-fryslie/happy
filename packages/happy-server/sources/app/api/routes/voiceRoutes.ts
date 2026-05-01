@@ -1,6 +1,11 @@
 import { z } from "zod";
 import * as crypto from "crypto";
-import { VoiceConversationResponseSchema, VoiceUsageResponseSchema } from "@slopus/happy-wire";
+import {
+    VoiceByoTokenRequestSchema,
+    VoiceByoTokenResponseSchema,
+    VoiceConversationResponseSchema,
+    VoiceUsageResponseSchema,
+} from "@slopus/happy-wire";
 import { type Fastify } from "../types";
 import { log } from "@/utils/log";
 
@@ -187,6 +192,58 @@ export function voiceRoutes(app: Fastify) {
         } catch (error) {
             log({ module: 'voice' }, `ElevenLabs request error for user ${userId}: ${error}`);
             return reply.code(500).send({ error: 'Failed to get voice credentials' });
+        }
+    });
+
+    /**
+     * BYO (bring-your-own) ElevenLabs token mint.
+     * User supplies their own agent ID + API key; server forwards to ElevenLabs
+     * and returns the short-lived conversation token. Never logs or stores the API key.
+     * Bypasses Happy usage gating — the user pays ElevenLabs directly.
+     */
+    app.post('/v1/voice/byo-token', {
+        preHandler: app.authenticate,
+        schema: {
+            body: VoiceByoTokenRequestSchema,
+            response: {
+                200: VoiceByoTokenResponseSchema,
+                400: z.object({ error: z.string() }),
+                502: z.object({ error: z.string() }),
+            },
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { agentId, apiKey } = request.body;
+
+        log({ module: 'voice' }, `BYO voice token request from user ${userId} for agent ${agentId}`);
+
+        try {
+            const tokenRes = await fetch(
+                `${ELEVEN_LABS_API}/conversation/token?agent_id=${encodeURIComponent(agentId)}`,
+                { headers: { 'xi-api-key': apiKey } }
+            );
+
+            if (!tokenRes.ok) {
+                const body = await tokenRes.text();
+                log({ module: 'voice' }, `BYO token mint failed for user ${userId}: ${tokenRes.status} ${body.slice(0, 200)}`);
+                return reply.code(502).send({ error: `ElevenLabs rejected request: ${tokenRes.status}` });
+            }
+
+            const { token: conversationToken } = (await tokenRes.json()) as { token?: string };
+            if (!conversationToken) {
+                return reply.code(502).send({ error: 'ElevenLabs returned no token' });
+            }
+
+            const jwtPayload = JSON.parse(Buffer.from(conversationToken.split('.')[1], 'base64').toString());
+            const conversationId = (jwtPayload.video?.room || '').match(/(conv_[a-zA-Z0-9]+)/)?.[0];
+            if (!conversationId) {
+                return reply.code(502).send({ error: 'ElevenLabs token missing conversation id' });
+            }
+
+            return reply.send({ conversationToken, conversationId, agentId });
+        } catch (error) {
+            log({ module: 'voice' }, `BYO token mint error for user ${userId}: ${error}`);
+            return reply.code(502).send({ error: 'Failed to mint BYO voice token' });
         }
     });
 
