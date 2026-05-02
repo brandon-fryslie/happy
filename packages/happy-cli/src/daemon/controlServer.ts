@@ -211,7 +211,7 @@ export function startDaemonControlServer({
       return { status: 'stopping' };
     });
 
-    app.listen({ port: 0, host: '127.0.0.1' }, (err, address) => {
+    app.listen({ port: 0, host: '0.0.0.0' }, (err, address) => {
       if (err) {
         logger.debug('[CONTROL SERVER] Failed to start:', err);
         throw err;
