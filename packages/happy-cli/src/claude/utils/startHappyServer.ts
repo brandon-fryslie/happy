@@ -96,7 +96,7 @@ export async function startHappyServer(client: ApiSessionClient) {
     });
 
     const baseUrl = await new Promise<URL>((resolve) => {
-        server.listen(0, "0.0.0.0", () => {
+        server.listen(0, "127.0.0.1", () => {
             const addr = server.address() as AddressInfo;
             resolve(new URL(`http://127.0.0.1:${addr.port}`));
         });
