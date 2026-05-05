@@ -1433,6 +1433,7 @@ const sheetStyles = {
 // Picker styles
 const pickerStyles = {
     container: {
+        flex: 1,
         paddingHorizontal: 16,
         paddingBottom: 8,
     } as const,
@@ -1540,8 +1541,7 @@ const pickerStyles = {
         marginVertical: 4,
     } as const,
     optionList: {
-        flexGrow: 0,
-        flexShrink: 1,
+        flex: 1,
     } as const,
     emptyText: {
         fontSize: 14,
