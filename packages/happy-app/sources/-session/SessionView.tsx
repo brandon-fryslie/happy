@@ -17,6 +17,8 @@ import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
+import { TtsControlBar } from '@/components/TtsControlBar';
+import { useTtsPlayer } from '@/hooks/useTtsPlayer';
 import { useDraft } from '@/hooks/useDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
@@ -110,6 +112,10 @@ export const SessionView = React.memo((props: { id: string }) => {
     const [scrollToFile, setScrollToFile] = React.useState<string | null>(null);
     const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
     const [fileViewPath, setFileViewPath] = React.useState<string | null>(null);
+
+    // [LAW:one-source-of-truth] Single TtsPlayer instance shared by the control bar and
+    // useTtsAutoMode (mounted inside TtsControlBar). One AsyncLock prevents auto/manual races.
+    const ttsPlayer = useTtsPlayer(sessionId);
 
     const handleSidebarFilePress = React.useCallback((file: GitFileStatus) => {
         if (file.status === 'deleted') return;
@@ -207,6 +213,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                     {!isTablet && realtimeStatus !== 'disconnected' && (
                         <VoiceAssistantStatusBar variant="full" />
                     )}
+                    <TtsControlBar sessionId={sessionId} player={ttsPlayer} />
                 </View>
             )}
 
