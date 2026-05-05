@@ -12,6 +12,29 @@ Fork remote: `git@github.com:brandon-fryslie/happy.git` (`origin`).
 
 ## Merged-to-fork-`main` changes (vs `upstream/main`)
 
+### Summarize-and-speak: on-device TTS for session messages (lit `brandon-tts-summarize-2yd`)
+
+A new "Speak Sessions" feature in the mobile app that summarizes recent agent/user messages with a user-supplied OpenAI-compatible LLM and reads the summary aloud via the user's ElevenLabs API key. The defining architectural choice: **the feature is fully on-device**. The Happy server is normally blind to message content (E2E encrypted via libsodium); routing decrypted text through the server for LLM summarization would punch a hole in that invariant. React Native `fetch` calls have no CORS, so the app calls user-configured LLM and ElevenLabs endpoints directly with no backend involvement.
+
+**Why upstream wouldn't do this as-is:** the natural place for "summarize a transcript" is a server-side endpoint that can choose a model, cache results, etc. — but doing so requires the server to read decrypted messages or trust client-supplied keys, both of which compromise the E2E story. This fork accepts the worse code-reuse story (no shared summarization service across web/desktop) in exchange for preserving the privacy invariant.
+
+**Reuses an existing fork pattern:** the BYO `voiceCustomElevenLabsApiKey` (added in the `voice-byo-elevenlabs` work) is the canonical "user's ElevenLabs key" — TTS falls back to it when no TTS-specific key is set, so a user who already configured BYO voice doesn't have to re-paste anything.
+
+**Flow:** SessionView mounts a single `useTtsPlayer(sessionId)` instance shared between the in-session control bar and the auto-mode watcher. Each play: read settings + messages from `storage.getState()` → slice by mode (`continue` / `from-last-user` / `restart`) → `POST {llmBaseUrl}/chat/completions` → `POST elevenlabs.io/v1/text-to-speech/{voiceId}/stream` → write mp3 to `expo-file-system` cache → play via `expo-audio` → on natural completion, advance the per-session position in MMKV. One `AsyncLock` serializes plays so auto-mode and manual taps can't race. `stop()` uses an abort token + externalized resolver to wake the playback `await` immediately.
+
+**What this change does:**
+- Settings schema: 7 new `tts*` fields in `packages/happy-app/sources/sync/settings.ts`; bumped `SUPPORTED_SCHEMA_VERSION` 2 → 3 (forward-compatible via the partial-Zod merge contract).
+- Position tracking: `getTtsPosition` / `setTtsPosition` / `clearTtsPosition` in `persistence.ts` (key prefix `tts-position-{sessionId}`). Device-local; not synced.
+- API clients: `sources/sync/llm/apiSummarize.ts` (OpenAI-compatible `/chat/completions`, normalizes trailing slashes, optional `Authorization` header for keyless local Ollama) and `sources/sync/llm/apiTts.ts` (`POST .../v1/text-to-speech/{voiceId}/stream`, `model_id: eleven_turbo_v2_5`, returns mp3 bytes). Both wrap fetch errors as `HappyError`.
+- `useTtsPlayer` hook (`sources/hooks/useTtsPlayer.ts`) — single `AsyncLock`, single `AbortToken { aborted, wakeup }` per play; `play(mode)` is awaitable so callers can wrap with `useHappyAction` for `Modal` error surfacing.
+- `useTtsAutoMode` hook (`sources/hooks/useTtsAutoMode.ts`) — debounced (1.5 s) and cooled-down (30 s) trigger; foreground-only; takes the same `TtsPlayer` as a parameter so it shares the lock with manual plays.
+- TTS settings screen (`sources/app/(app)/settings/tts.tsx`), linked from `SettingsView`, registered in `(app)/_layout.tsx`.
+- `TtsControlBar` component (`sources/components/TtsControlBar.tsx`) — speaker icon idle, spinner loading, stop while playing; long-press menu offers `Continue` / `From your last message` / `Restart from beginning`. Mounted alongside `VoiceAssistantStatusBar` in `SessionView.tsx`.
+- 47 new translation keys (`settings.tts*`, `settingsTts.*`, `sessionTts.*`) in `_default.ts` and all 10 language files (en/ru/pl/es/ca/it/pt/ja/zh-Hans/zh-Hant). Brand names and literal IDs/URLs preserved verbatim.
+- CHANGELOG version 10 entry; `changelog.json` regenerated.
+
+**Files:** `packages/happy-app/sources/sync/settings.ts`, `packages/happy-app/sources/sync/settings.spec.ts`, `packages/happy-app/sources/sync/persistence.ts`, `packages/happy-app/sources/sync/llm/apiSummarize.ts`, `packages/happy-app/sources/sync/llm/apiTts.ts`, `packages/happy-app/sources/hooks/useTtsPlayer.ts`, `packages/happy-app/sources/hooks/useTtsAutoMode.ts`, `packages/happy-app/sources/app/(app)/settings/tts.tsx`, `packages/happy-app/sources/app/(app)/_layout.tsx`, `packages/happy-app/sources/components/TtsControlBar.tsx`, `packages/happy-app/sources/components/SettingsView.tsx`, `packages/happy-app/sources/-session/SessionView.tsx`, `packages/happy-app/sources/text/_default.ts`, `packages/happy-app/sources/text/translations/{en,ru,pl,es,ca,it,pt,ja,zh-Hans,zh-Hant}.ts`, `CHANGELOG.md`, `packages/happy-app/sources/changelog/changelog.json`.
+
 ### `docs: track CLAUDE.md` — un-ignore root developer guide
 Upstream's `.gitignore` excludes `CLAUDE.md` (treated as per-developer scratch). This fork tracks it as the canonical onboarding doc for future Claude Code sessions. The line was removed from `.gitignore`; `CLAUDE.local.md` and `.claude/CLAUDE.md` remain ignored.
 
