@@ -1,6 +1,20 @@
 {
   "entries": [
     {
+      "version": 10,
+      "date": "2026-05-05",
+      "summary": "Have your sessions read aloud. Bring your own LLM and ElevenLabs voice and the app summarizes new agent activity, then speaks it on your device — keys and message text never leave your phone.",
+      "changes": [
+        "New \"Speak Sessions\" feature: summarize-and-speak with your own OpenAI-compatible LLM and ElevenLabs voice",
+        "Tap the speaker icon in any session to hear what's new since you last listened, or long-press for \"From your last message\" / \"Restart from beginning\"",
+        "Optional auto-mode automatically reads each new agent response when the app is in the foreground",
+        "New TTS settings screen for ElevenLabs voice ID, ElevenLabs API key, and OpenAI-compatible base URL / API key / model — works with OpenAI, OpenRouter, local Ollama, vLLM, and any compatible endpoint",
+        "Reuses your existing BYO ElevenLabs voice key when no TTS-specific key is set",
+        "Everything runs on-device. No messages or keys are sent to Happy servers."
+      ],
+      "rawMarkdown": "## Version 10 - 2026-05-05\n\n\nHave your sessions read aloud. Bring your own LLM and ElevenLabs voice and the app summarizes new agent activity, then speaks it on your device — keys and message text never leave your phone.\n\n- New \"Speak Sessions\" feature: summarize-and-speak with your own OpenAI-compatible LLM and ElevenLabs voice\n- Tap the speaker icon in any session to hear what's new since you last listened, or long-press for \"From your last message\" / \"Restart from beginning\"\n- Optional auto-mode automatically reads each new agent response when the app is in the foreground\n- New TTS settings screen for ElevenLabs voice ID, ElevenLabs API key, and OpenAI-compatible base URL / API key / model — works with OpenAI, OpenRouter, local Ollama, vLLM, and any compatible endpoint\n- Reuses your existing BYO ElevenLabs voice key when no TTS-specific key is set\n- Everything runs on-device. No messages or keys are sent to Happy servers."
+    },
+    {
       "version": 9,
       "date": "2026-04-15",
       "summary": "Clean up stale machines cluttering your settings and session picker. Offline machines are now hidden by default with a one-tap reveal, and you can permanently remove machines you no longer use.",
@@ -119,5 +133,5 @@
       "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
-  "latestVersion": 9
+  "latestVersion": 10
 }

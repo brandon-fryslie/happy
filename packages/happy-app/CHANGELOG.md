@@ -1,5 +1,16 @@
 # Changelog
 
+## Version 10 - 2026-05-05
+
+Have your sessions read aloud. Bring your own LLM and ElevenLabs voice and the app summarizes new agent activity, then speaks it on your device — keys and message text never leave your phone.
+
+- New "Speak Sessions" feature: summarize-and-speak with your own OpenAI-compatible LLM and ElevenLabs voice
+- Tap the speaker icon in any session to hear what's new since you last listened, or long-press for "From your last message" / "Restart from beginning"
+- Optional auto-mode automatically reads each new agent response when the app is in the foreground
+- New TTS settings screen for ElevenLabs voice ID, ElevenLabs API key, and OpenAI-compatible base URL / API key / model — works with OpenAI, OpenRouter, local Ollama, vLLM, and any compatible endpoint
+- Reuses your existing BYO ElevenLabs voice key when no TTS-specific key is set
+- Everything runs on-device. No messages or keys are sent to Happy servers.
+
 ## Version 9 - 2026-04-15
 
 Clean up stale machines cluttering your settings and session picker. Offline machines are now hidden by default with a one-tap reveal, and you can permanently remove machines you no longer use.

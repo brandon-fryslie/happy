@@ -11,6 +11,7 @@ const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
 const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
 const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
 const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
+const TTS_POSITION_KEY_PREFIX = 'tts-position-';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -315,6 +316,20 @@ export function resetVoiceLocalCounters() {
     mmkv.delete(VOICE_SOFT_PAYWALL_SHOWN_KEY);
     mmkv.delete(VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY);
     mmkv.delete(VOICE_MESSAGE_COUNT_KEY);
+}
+
+// [LAW:one-source-of-truth] TTS playback position is device-local — does NOT sync across devices.
+// Stored as a plain string (the message ID); the message list is the authoritative ordering.
+export function getTtsPosition(sessionId: string): string | null {
+    return mmkv.getString(TTS_POSITION_KEY_PREFIX + sessionId) ?? null;
+}
+
+export function setTtsPosition(sessionId: string, messageId: string): void {
+    mmkv.set(TTS_POSITION_KEY_PREFIX + sessionId, messageId);
+}
+
+export function clearTtsPosition(sessionId: string): void {
+    mmkv.delete(TTS_POSITION_KEY_PREFIX + sessionId);
 }
 
 export function clearPersistence() {

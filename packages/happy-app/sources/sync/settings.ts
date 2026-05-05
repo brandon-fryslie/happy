@@ -5,7 +5,7 @@ import * as z from 'zod';
 //
 
 // Current schema version for backward compatibility
-export const SUPPORTED_SCHEMA_VERSION = 2;
+export const SUPPORTED_SCHEMA_VERSION = 3;
 
 export const SettingsSchema = z.object({
     // Schema version for compatibility detection
@@ -34,6 +34,16 @@ export const SettingsSchema = z.object({
     voiceCustomAgentId: z.string().nullable().describe('Custom ElevenLabs agent ID (null to use Happy default)'),
     voiceCustomElevenLabsApiKey: z.string().nullable().describe('Custom ElevenLabs API key for BYO agent — server uses it to mint conversation tokens'),
     voiceBypassToken: z.boolean().describe('Bypass Happy server usage gating and mint via user-supplied ElevenLabs API key (requires custom agent ID + API key)'),
+
+    // [LAW:one-source-of-truth] TTS feature: on-device summarize+speak using user-supplied LLM/TTS endpoints.
+    // ElevenLabs key falls back to voiceCustomElevenLabsApiKey when null — single canonical "user's ElevenLabs key".
+    ttsEnabled: z.boolean().describe('Enable summarize-and-speak TTS feature'),
+    ttsAutoMode: z.boolean().describe('Auto-speak new agent responses when in foreground'),
+    ttsVoiceId: z.string().nullable().describe('ElevenLabs voice ID for TTS (null = built-in default)'),
+    ttsElevenLabsApiKey: z.string().nullable().describe('ElevenLabs API key for TTS (falls back to voiceCustomElevenLabsApiKey when null)'),
+    ttsLlmBaseUrl: z.string().nullable().describe('OpenAI-compatible base URL for summarization (e.g. https://api.openai.com/v1, http://ollama.local:11434/v1)'),
+    ttsLlmApiKey: z.string().nullable().describe('OpenAI-compatible API key for summarization (may be empty for local Ollama)'),
+    ttsLlmModel: z.string().nullable().describe('OpenAI-compatible model name (e.g. gpt-4o-mini, llama3.1:8b)'),
     preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
     recentMachinePaths: z.array(z.object({
         machineId: z.string(),
@@ -103,6 +113,15 @@ export const settingsDefaults: Settings = {
     voiceCustomAgentId: null,
     voiceCustomElevenLabsApiKey: null,
     voiceBypassToken: false,
+
+    ttsEnabled: false,
+    ttsAutoMode: false,
+    ttsVoiceId: null,
+    ttsElevenLabsApiKey: null,
+    ttsLlmBaseUrl: null,
+    ttsLlmApiKey: null,
+    ttsLlmModel: null,
+
     preferredLanguage: null,
     recentMachinePaths: [],
     lastUsedAgent: null,
