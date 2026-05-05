@@ -426,12 +426,21 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
+    const [settingsMaxHeight, setSettingsMaxHeight] = React.useState(400);
+    const innerContainerRef = React.useRef<View>(null);
 
-    // Handle settings button press
+    // Handle settings button press — measure available space above the input
     const handleSettingsPress = React.useCallback(() => {
         hapticsLight();
+        if (!showSettings && innerContainerRef.current) {
+            innerContainerRef.current.measureInWindow((_x, y) => {
+                // Available space is from top of screen to top of the input container, minus margin
+                const available = y - 16;
+                setSettingsMaxHeight(Math.max(200, Math.min(400, available)));
+            });
+        }
         setShowSettings(prev => !prev);
-    }, []);
+    }, [showSettings]);
 
     // Handle settings selection
     const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
@@ -559,10 +568,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             styles.container,
             { paddingHorizontal: screenWidth > 700 ? 12 : 8 }
         ]}>
-            <View style={[
-                styles.innerContainer,
-                { maxWidth: layout.maxWidth }
-            ]}>
+            <View
+                ref={innerContainerRef}
+                style={[
+                    styles.innerContainer,
+                    { maxWidth: layout.maxWidth }
+                ]}
+            >
                 {/* Autocomplete suggestions overlay */}
                 {suggestions.length > 0 && (
                     <View style={[
@@ -591,7 +603,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             styles.settingsOverlay,
                             { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
                         ]}>
-                            <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
+                            <FloatingOverlay maxHeight={settingsMaxHeight} keyboardShouldPersistTaps="always">
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
