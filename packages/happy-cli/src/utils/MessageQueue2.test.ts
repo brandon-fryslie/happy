@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { MessageQueue2 } from './MessageQueue2';
+import { MessageQueue2, flattenQueueMessageToText, mergeQueueMessages } from './MessageQueue2';
 import { hashObject } from './deterministicJson';
+import type { ContentBlock } from '@/api/types';
 
 describe('MessageQueue2', () => {
     it('should create a queue', () => {
@@ -455,5 +456,63 @@ describe('MessageQueue2', () => {
         const batch3 = await queue.waitForMessagesAndGetAsString();
         expect(batch3?.message).toBe('after-isolated');
         expect(batch3?.mode.type).toBe('B');
+    });
+
+    describe('content-block messages', () => {
+        const imageBlock: ContentBlock = {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: 'aGVsbG8=' }
+        };
+
+        it('preserves a content array through push and collect', async () => {
+            const queue = new MessageQueue2<string>(mode => mode);
+            queue.push([{ type: 'text', text: 'what is this?' }, imageBlock], 'remote');
+
+            const batch = await queue.waitForMessagesAndGetAsString();
+            expect(batch).not.toBeNull();
+            expect(Array.isArray(batch?.message)).toBe(true);
+            expect(batch?.message).toEqual([
+                { type: 'text', text: 'what is this?' },
+                imageBlock
+            ]);
+        });
+
+        it('merges a string + content-array batch into a single content array', async () => {
+            const queue = new MessageQueue2<string>(mode => mode);
+            queue.push('first text', 'remote');
+            queue.push([imageBlock], 'remote');
+
+            const batch = await queue.waitForMessagesAndGetAsString();
+            expect(batch).not.toBeNull();
+            expect(batch?.message).toEqual([
+                { type: 'text', text: 'first text' },
+                imageBlock
+            ]);
+        });
+
+        it('keeps all-string batches as a joined string (legacy shape)', async () => {
+            const queue = new MessageQueue2<string>(mode => mode);
+            queue.push('a', 'remote');
+            queue.push('b', 'remote');
+
+            const batch = await queue.waitForMessagesAndGetAsString();
+            expect(batch?.message).toBe('a\nb');
+        });
+
+        it('flattenQueueMessageToText drops image blocks', () => {
+            expect(flattenQueueMessageToText('hello')).toBe('hello');
+            expect(
+                flattenQueueMessageToText([
+                    { type: 'text', text: 'a' },
+                    imageBlock,
+                    { type: 'text', text: 'b' }
+                ])
+            ).toBe('a\nb');
+        });
+
+        it('mergeQueueMessages preserves single-item shape', () => {
+            expect(mergeQueueMessages(['only'])).toBe('only');
+            expect(mergeQueueMessages([[imageBlock]])).toEqual([imageBlock]);
+        });
     });
 });

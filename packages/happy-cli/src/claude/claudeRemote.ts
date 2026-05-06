@@ -11,6 +11,17 @@ import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
+import type { ContentBlock } from "@/api/types";
+
+// Special commands like /clear are text-only; flatten content blocks down to their text
+// portion for parser consumption while keeping the original blocks for the SDK push.
+function flattenToText(message: string | ContentBlock[]): string {
+    if (typeof message === 'string') return message;
+    return message
+        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+        .map(b => b.text)
+        .join('\n');
+}
 
 export async function claudeRemote(opts: {
 
@@ -31,7 +42,7 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
+    nextMessage: () => Promise<{ message: string | ContentBlock[], mode: EnhancedMode } | null>,
     onReady: () => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -90,7 +101,7 @@ export async function claudeRemote(opts: {
     }
 
     // Handle special commands
-    const specialCommand = parseSpecialCommand(initial.message);
+    const specialCommand = parseSpecialCommand(flattenToText(initial.message));
 
     // Handle /clear command
     if (specialCommand.type === 'clear') {

@@ -9,7 +9,10 @@ import {
 } from './messages';
 import {
   AgentMessageSchema,
+  ContentBlockSchema,
+  ImageBlockSchema,
   LegacyMessageContentSchema,
+  TextBlockSchema,
   UserMessageSchema,
 } from './legacyProtocol';
 
@@ -134,6 +137,54 @@ describe('shared wire message schemas', () => {
     });
 
     expect(parsed.success).toBe(true);
+  });
+
+  it('parses a user message with content array of text + image blocks', () => {
+    const parsed = UserMessageSchema.safeParse({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'what is in this screenshot?' },
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/png',
+            data: 'aGVsbG8=',
+          },
+        },
+      ],
+      meta: { sentFrom: 'mobile' },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects an image block with an unsupported media_type', () => {
+    const parsed = ImageBlockSchema.safeParse({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: 'image/svg+xml',
+        data: 'aGVsbG8=',
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it('discriminates ContentBlock by type', () => {
+    expect(
+      ContentBlockSchema.safeParse({ type: 'text', text: 'hi' }).success,
+    ).toBe(true);
+    expect(
+      TextBlockSchema.safeParse({ type: 'text', text: 'hi' }).success,
+    ).toBe(true);
+    expect(
+      ContentBlockSchema.safeParse({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: 'aGk=' },
+      }).success,
+    ).toBe(true);
   });
 
   it('parses legacy decrypted agent message payload', () => {

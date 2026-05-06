@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
-import { AgentState, Metadata } from '@/api/types';
+import { AgentState, Metadata, extractMessageText, getMessageContent } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
@@ -363,8 +363,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
         }
 
+        // Normalize content once: text view for parsers/loggers, structural view for the queue
+        // (preserves image blocks for the SDK push site in claudeRemote.ts).
+        const messageText = extractMessageText(message.content);
+        const messageContent = getMessageContent(message.content);
+
         // Check for special commands before processing
-        const specialCommand = parseSpecialCommand(message.content.text);
+        const specialCommand = parseSpecialCommand(messageText);
 
         if (specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
@@ -377,7 +382,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 allowedTools: messageAllowedTools,
                 disallowedTools: messageDisallowedTools
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || messageText, enhancedMode);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
@@ -393,7 +398,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 allowedTools: messageAllowedTools,
                 disallowedTools: messageDisallowedTools
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || messageText, enhancedMode);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
@@ -450,7 +455,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             allowedTools: messageAllowedTools,
             disallowedTools: messageDisallowedTools
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        messageQueue.push(messageContent, enhancedMode);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 

@@ -262,10 +262,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }
 
     try {
-        let pending: {
-            message: string;
-            mode: EnhancedMode;
-        } | null = null;
+        let pending: Awaited<ReturnType<typeof session.queue.waitForMessagesAndGetAsString>> = null;
 
         // Track session ID to detect when it actually changes
         // This prevents context loss when mode changes (permission mode, model, etc.)

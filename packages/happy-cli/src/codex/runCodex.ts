@@ -12,7 +12,7 @@ import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
-import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { MessageQueue2, flattenQueueMessageToText } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
@@ -25,6 +25,7 @@ import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
+import { extractMessageText } from '@/api/types';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -259,7 +260,7 @@ export async function runCodex(opts: {
             permissionMode: messagePermissionMode || 'default',
             model: messageModel,
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        messageQueue.push(extractMessageText(message.content), enhancedMode);
     });
     let thinking = false;
     let currentTurnId: string | null = null;
@@ -659,7 +660,9 @@ export async function runCodex(opts: {
                     logger.debug(`[codex]: batch=${!!batch}, shouldExit=${shouldExit}`);
                     break;
                 }
-                message = batch;
+                // Codex doesn't yet support image content blocks; flatten to text for now.
+                // (Tracked under brandon-image-input-7cx.2.)
+                message = { ...batch, message: flattenQueueMessageToText(batch.message) };
             }
 
             // Defensive check for TS narrowing

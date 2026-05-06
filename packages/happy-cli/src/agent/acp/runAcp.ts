@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
+import { extractMessageText } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
@@ -8,7 +9,7 @@ import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
-import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { MessageQueue2, flattenQueueMessageToText } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
@@ -827,7 +828,8 @@ export async function runAcp(opts: {
   backend.onMessage(onBackendMessage);
 
   session.onUserMessage((message) => {
-    if (!message.content.text) {
+    const text = extractMessageText(message.content);
+    if (!text) {
       return;
     }
 
@@ -841,7 +843,7 @@ export async function runAcp(opts: {
       logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
     }
 
-    messageQueue.push(message.content.text, {
+    messageQueue.push(text, {
       permissionMode: currentPermissionMode,
       model: currentModel,
     });
@@ -906,7 +908,10 @@ export async function runAcp(opts: {
         throw new Error('ACP session is not started');
       }
 
-      logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
+      // ACP backends here are text-only; image blocks are dropped at the boundary.
+      const promptText = flattenQueueMessageToText(batch.message);
+
+      logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(promptText, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());
       const turnEnded = waitForTurnEnd();
       try {
@@ -916,7 +921,7 @@ export async function runAcp(opts: {
         if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
           await switchModelIfRequested(batch.mode.model);
         }
-        await backend.sendPrompt(acpSessionId, batch.message);
+        await backend.sendPrompt(acpSessionId, promptText);
         await turnEnded;
         sendEnvelopes(sessionManager.endTurn('completed'));
         session.sendSessionEvent({ type: 'ready' });

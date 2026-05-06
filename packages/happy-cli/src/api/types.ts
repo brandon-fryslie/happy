@@ -218,17 +218,65 @@ export const CreateSessionResponseSchema = z.object({
 
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>
 
+// [LAW:one-source-of-truth] Mirror of @slopus/happy-wire's UserMessageSchema. The CLI
+// duplicates the wire schema today; both must stay in sync. Anthropic SDK ContentBlockParam
+// shape is used directly so claudeRemote can pass content through without translation.
+export const TextBlockSchema = z.object({
+  type: z.literal('text'),
+  text: z.string()
+})
+export type TextBlock = z.infer<typeof TextBlockSchema>
+
+export const ImageBlockSchema = z.object({
+  type: z.literal('image'),
+  source: z.object({
+    type: z.literal('base64'),
+    media_type: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
+    data: z.string()
+  })
+})
+export type ImageBlock = z.infer<typeof ImageBlockSchema>
+
+export const ContentBlockSchema = z.discriminatedUnion('type', [
+  TextBlockSchema,
+  ImageBlockSchema
+])
+export type ContentBlock = z.infer<typeof ContentBlockSchema>
+
 export const UserMessageSchema = z.object({
   role: z.literal('user'),
-  content: z.object({
-    type: z.literal('text'),
-    text: z.string()
-  }),
+  content: z.union([
+    z.object({
+      type: z.literal('text'),
+      text: z.string()
+    }),
+    z.array(ContentBlockSchema)
+  ]),
   localKey: z.string().optional(), // Mobile messages include this
   meta: MessageMetaSchema.optional()
 })
 
 export type UserMessage = z.infer<typeof UserMessageSchema>
+
+// [LAW:dataflow-not-control-flow] Two helpers, one for each downstream need: parsers and
+// loggers want a flat string; the SDK push site wants the full content forwarded as-is.
+// Centralizing them here means callers don't repeat the union check inline.
+export function extractMessageText(content: UserMessage['content']): string {
+  if (!Array.isArray(content)) {
+    return content.text
+  }
+  return content
+    .filter((b): b is TextBlock => b.type === 'text')
+    .map(b => b.text)
+    .join('\n')
+}
+
+export function getMessageContent(content: UserMessage['content']): string | ContentBlock[] {
+  if (!Array.isArray(content)) {
+    return content.text
+  }
+  return content
+}
 
 export const AgentMessageSchema = z.object({
   role: z.literal('agent'),
