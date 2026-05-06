@@ -71,9 +71,23 @@ type OutboxMessage = {
     content: string;
 };
 
+export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+
+export type ImageAttachment = {
+    /** Stable id for UI list keys / removal. */
+    id: string;
+    mediaType: ImageMediaType;
+    /** Raw base64 (no data: prefix) — what we ship over the wire. */
+    data: string;
+    /** data: URI for rendering in <Image> previews. */
+    previewUri: string;
+};
+
 type SendMessageOptions = {
     displayText?: string;
     source?: MessageSentSource;
+    /** Attachments captured from paste / picker; sent as Anthropic image blocks. */
+    images?: ImageAttachment[];
 };
 
 class Sync {
@@ -470,7 +484,7 @@ class Sync {
         }
 
         const { permissionMode, model } = resolveMessageModeMeta(session);
-        const { displayText, source = 'chat' } = options ?? {};
+        const { displayText, source = 'chat', images } = options ?? {};
 
         // Generate local ID
         const localId = randomUUID();
@@ -494,13 +508,27 @@ class Sync {
 
         const fallbackModel: string | null = null;
 
+        // [LAW:dataflow-not-control-flow] No images = legacy text shape; images = block array.
+        // The wire schema accepts either; old CLIs that haven't been updated still parse the
+        // text-only object branch correctly, and new CLIs accept both.
+        const messageContent = images && images.length > 0
+            ? [
+                ...(text.length > 0 ? [{ type: 'text' as const, text }] : []),
+                ...images.map((img) => ({
+                    type: 'image' as const,
+                    source: {
+                        type: 'base64' as const,
+                        media_type: img.mediaType,
+                        data: img.data,
+                    },
+                })),
+            ]
+            : { type: 'text' as const, text };
+
         // Create user message content with metadata
         const content: RawRecord = {
             role: 'user',
-            content: {
-                type: 'text',
-                text
-            },
+            content: messageContent,
             meta: {
                 sentFrom,
                 permissionMode,

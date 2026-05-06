@@ -409,6 +409,7 @@ export const ru: TranslationStructure = {
     },
 
     agentInput: {
+        attachImage: 'Прикрепить изображение',
         permissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
             default: 'По умолчанию',

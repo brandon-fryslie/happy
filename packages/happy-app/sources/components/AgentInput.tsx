@@ -3,7 +3,7 @@ import * as React from 'react';
 import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { layout } from './layout';
-import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
+import { MultiTextInput, KeyPressEvent, PastedImage } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
 import { EffortLevel } from './modelModeOptions';
@@ -77,6 +77,17 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
+    /**
+     * Image attachments composed alongside the in-progress message. The chip strip is
+     * rendered above the text input; an X on each chip removes it. Pasted images are
+     * appended via onPasteImages.
+     */
+    attachments?: PastedImage[];
+    onPasteImages?: (images: PastedImage[]) => void;
+    onRemoveAttachment?: (index: number) => void;
+    /** Show an attach button — only relevant on Android where TextInput.onPaste is text-only. */
+    showAttachButton?: boolean;
+    onAttachPress?: () => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -308,9 +319,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const isSendBlocked = props.blockSend ?? false;
 
     const hasText = props.value.trim().length > 0;
+    const hasAttachments = (props.attachments?.length ?? 0) > 0;
+    const hasContent = hasText || hasAttachments;
     const canPressSendButton = !props.isSending
         && !props.isSendDisabled
-        && (isSendBlocked ? hasText : (hasText || !!props.onMicPress));
+        && (isSendBlocked ? hasContent : (hasContent || !!props.onMicPress));
 
     // Check if this is a Codex, Gemini, or OpenClaw session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
@@ -475,10 +488,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [props.onAbort]);
 
     const handleBlockedSendAttempt = React.useCallback(() => {
-        if (!isSendBlocked || !hasText || props.isSending) return;
+        if (!isSendBlocked || !hasContent || props.isSending) return;
         hapticsError();
         sendBlockShakerRef.current?.shake();
-    }, [hasText, isSendBlocked, props.isSending]);
+    }, [hasContent, isSendBlocked, props.isSending]);
 
     const handleSendPress = React.useCallback(() => {
         if (isSendBlocked) {
@@ -488,12 +501,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (props.isSendDisabled || props.isSending) return;
 
         hapticsLight();
-        if (hasText) {
+        if (hasContent) {
             props.onSend();
         } else {
             props.onMicPress?.();
         }
-    }, [handleBlockedSendAttempt, hasText, isSendBlocked, props]);
+    }, [handleBlockedSendAttempt, hasContent, isSendBlocked, props]);
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -1070,6 +1083,51 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 {/* Box 2: Action Area (Input + Send) */}
                 <Shaker ref={sendBlockShakerRef}>
                 <View style={styles.unifiedPanel}>
+                    {/* Image attachments strip — rendered above the text input when any */}
+                    {props.attachments && props.attachments.length > 0 && (
+                        <View style={{
+                            flexDirection: 'row',
+                            flexWrap: 'wrap',
+                            gap: 8,
+                            paddingHorizontal: 8,
+                            paddingTop: 8,
+                            paddingBottom: 4,
+                        }}>
+                            {props.attachments.map((att, i) => (
+                                <View key={`att-${i}`} style={{ position: 'relative' }}>
+                                    <Image
+                                        source={{ uri: att.previewUri }}
+                                        style={{ width: 56, height: 56, borderRadius: 8, backgroundColor: theme.colors.surfacePressed }}
+                                        contentFit="cover"
+                                    />
+                                    <Pressable
+                                        onPress={() => {
+                                            hapticsLight();
+                                            props.onRemoveAttachment?.(i);
+                                        }}
+                                        hitSlop={6}
+                                        style={({ pressed }) => ({
+                                            position: 'absolute',
+                                            top: -6,
+                                            right: -6,
+                                            width: 20,
+                                            height: 20,
+                                            borderRadius: 10,
+                                            backgroundColor: theme.colors.surfaceHigh,
+                                            borderWidth: 1,
+                                            borderColor: theme.colors.divider,
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            opacity: pressed ? 0.6 : 1,
+                                        })}
+                                    >
+                                        <Ionicons name="close" size={12} color={theme.colors.text} />
+                                    </Pressable>
+                                </View>
+                            ))}
+                        </View>
+                    )}
+
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <MultiTextInput
@@ -1081,6 +1139,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             placeholder={props.placeholder}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
+                            onPasteImages={props.onPasteImages}
                             maxHeight={120}
                         />
                     </View>
@@ -1188,6 +1247,35 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                                 {/* Git Status Badge */}
                                 <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+
+                                {/* Attach image button — Android needs this since TextInput.onPaste is text-only.
+                                    iOS+Web get native paste, so the button is supplemental there. */}
+                                {props.showAttachButton && props.onAttachPress && (
+                                    <Pressable
+                                        onPress={() => {
+                                            hapticsLight();
+                                            props.onAttachPress?.();
+                                        }}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 6,
+                                            justifyContent: 'center',
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                        })}
+                                        accessibilityLabel={t('agentInput.attachImage')}
+                                    >
+                                        <Ionicons
+                                            name="image-outline"
+                                            size={16}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                    </Pressable>
+                                )}
                                 </View>
 
                                 {/* Send/Voice button - aligned with first row */}
@@ -1195,7 +1283,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     style={[
                                         styles.sendButton,
                                         isSendBlocked ? styles.sendButtonLocked :
-                                        (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
+                                        (hasContent || props.isSending || (props.onMicPress && !props.isMicActive))
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
                                     ]}
@@ -1223,7 +1311,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 size={15}
                                                 color={theme.colors.textSecondary}
                                             />
-                                        ) : hasText ? (
+                                        ) : hasContent ? (
                                             <Octicons
                                                 name="arrow-up"
                                                 size={16}

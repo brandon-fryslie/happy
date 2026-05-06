@@ -1,5 +1,6 @@
 import * as React from "react";
 import { View, Text } from "react-native";
+import { Image } from "expo-image";
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
@@ -73,13 +74,32 @@ function UserTextBlock(props: {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
+  const images = props.message.images;
+  const hasText = (props.message.displayText || props.message.text || '').length > 0;
+
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
-        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-        {/* {__DEV__ && (
-          <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
-        )} */}
+        {images && images.length > 0 && (
+          <View style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 6,
+            marginBottom: hasText ? 8 : 0,
+          }}>
+            {images.map((img, i) => (
+              <Image
+                key={`img-${i}`}
+                source={{ uri: img.previewUri }}
+                style={{ width: 160, height: 160, borderRadius: 8 }}
+                contentFit="cover"
+              />
+            ))}
+          </View>
+        )}
+        {hasText && (
+          <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+        )}
       </View>
     </View>
   );

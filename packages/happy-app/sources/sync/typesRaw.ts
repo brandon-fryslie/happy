@@ -431,10 +431,26 @@ const rawRecordSchema = z.preprocess(
         }),
         z.object({
             role: z.literal('user'),
-            content: z.object({
-                type: z.literal('text'),
-                text: z.string()
-            }),
+            // [LAW:locality-or-seam] Mirrors @slopus/happy-wire's UserMessageSchema. Legacy
+            // {type:text,text} object stays as-is; new senders pass an array of
+            // text + image content blocks (Anthropic ContentBlockParam shape).
+            content: z.union([
+                z.object({
+                    type: z.literal('text'),
+                    text: z.string()
+                }),
+                z.array(z.discriminatedUnion('type', [
+                    z.object({ type: z.literal('text'), text: z.string() }),
+                    z.object({
+                        type: z.literal('image'),
+                        source: z.object({
+                            type: z.literal('base64'),
+                            media_type: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
+                            data: z.string()
+                        })
+                    })
+                ]))
+            ]),
             meta: MessageMetaSchema.optional()
         }),
         z.object({
@@ -500,12 +516,22 @@ type NormalizedAgentContent =
         prompt: string
     };
 
+export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+
+export type UserContentBlock =
+    | { type: 'text'; text: string }
+    | {
+        type: 'image';
+        source: { type: 'base64'; media_type: ImageMediaType; data: string };
+    };
+
+export type UserMessageContent =
+    | { type: 'text'; text: string }
+    | UserContentBlock[];
+
 export type NormalizedMessage = ({
     role: 'user'
-    content: {
-        type: 'text';
-        text: string;
-    }
+    content: UserMessageContent
 } | {
     role: 'agent'
     content: NormalizedAgentContent[]

@@ -22,6 +22,12 @@ export type ToolCall = {
 }
 
 // Flattened message types - each message represents a single block
+export type UserMessageImage = {
+    mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+    /** data: URI suitable for <Image source={{uri}} />. */
+    previewUri: string;
+};
+
 export type UserTextMessage = {
     kind: 'user-text';
     id: string;
@@ -29,6 +35,7 @@ export type UserTextMessage = {
     createdAt: number;
     text: string;
     displayText?: string; // Optional text to display in UI instead of actual text
+    images?: UserMessageImage[];
     meta?: MessageMeta;
 }
 

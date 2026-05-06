@@ -391,6 +391,7 @@ export const en = {
     },
 
     agentInput: {
+        attachImage: 'Attach image',
         permissionMode: {
             title: 'PERMISSION MODE',
             default: 'default permissions',

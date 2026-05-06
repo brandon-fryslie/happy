@@ -407,6 +407,7 @@ export const en: TranslationStructure = {
     },
 
     agentInput: {
+        attachImage: 'Attach image',
         permissionMode: {
             title: 'PERMISSION MODE',
             default: 'default permissions',

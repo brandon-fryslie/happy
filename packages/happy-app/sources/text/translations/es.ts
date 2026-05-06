@@ -393,6 +393,7 @@ export const es: TranslationStructure = {
     },
 
     agentInput: {
+        attachImage: 'Adjuntar imagen',
         permissionMode: {
             title: 'MODO DE PERMISOS',
             default: 'Por defecto',

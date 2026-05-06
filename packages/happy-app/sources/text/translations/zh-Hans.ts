@@ -394,6 +394,7 @@ export const zhHans: TranslationStructure = {
     },
 
     agentInput: {
+        attachImage: '附加图片',
         permissionMode: {
             title: '权限模式',
             default: '默认',

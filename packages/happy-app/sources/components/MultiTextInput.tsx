@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Text, TextInput, Platform, View, NativeSyntheticEvent, TextInputKeyPressEventData, TextInputSelectionChangeEventData } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import * as FileSystem from 'expo-file-system';
 
 export type SupportedKey = 'Enter' | 'Escape' | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'Tab';
 
@@ -29,6 +30,14 @@ export interface MultiTextInputHandle {
     blur: () => void;
 }
 
+export type PastedImage = {
+    mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+    /** Raw base64 (no data: URI prefix). */
+    data: string;
+    /** data: URI suitable for previewing in <Image source={{uri}} />. */
+    previewUri: string;
+};
+
 interface MultiTextInputProps {
     value: string;
     onChangeText: (text: string) => void;
@@ -43,7 +52,16 @@ interface MultiTextInputProps {
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
+    /**
+     * iOS 16+ surfaces image paste events through TextInput.onPaste with file:// URIs.
+     * We read each pasted file as base64 and report it. Android's TextInput.onPaste only
+     * fires for text, so this is iOS-only in practice — Android paste is exposed via the
+     * attach button in AgentInput.
+     */
+    onPasteImages?: (images: PastedImage[]) => void;
 }
+
+const SUPPORTED_IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
     const {
@@ -55,7 +73,8 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         lineHeight = MULTI_TEXT_INPUT_LINE_HEIGHT,
         onKeyPress,
         onSelectionChange,
-        onStateChange
+        onStateChange,
+        onPasteImages,
     } = props;
 
     const { theme } = useUnistyles();
@@ -149,6 +168,52 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         }
     }, [onChangeText, onStateChange, onSelectionChange]);
 
+    // [LAW:dataflow-not-control-flow] iOS pastes always emit through onPaste; we just check
+    // each item for an image MIME and read its bytes. Text-only pastes still flow through
+    // onChangeText normally — the native side handles the text-paste path itself.
+    const handleNativePaste = React.useCallback(async (
+        e: NativeSyntheticEvent<{ items?: Array<{ type?: string; data?: string }> }>
+    ) => {
+        if (!onPasteImages) return;
+        const items = e.nativeEvent?.items ?? [];
+        const imageItems = items.filter(
+            (it) => typeof it.type === 'string' && SUPPORTED_IMAGE_MIME.has(it.type)
+        );
+        if (imageItems.length === 0) return;
+
+        const collected: PastedImage[] = [];
+        for (const item of imageItems) {
+            if (!item.data) continue;
+            const mime = item.type as PastedImage['mediaType'];
+            // iOS surfaces either a file:// URI or raw base64 (varies by RN version + UTI).
+            // file:// URIs require expo-file-system to read; base64 strings can be used directly.
+            if (item.data.startsWith('file://') || item.data.startsWith('/')) {
+                try {
+                    const fileUri = item.data.startsWith('file://') ? item.data : `file://${item.data}`;
+                    const base64 = await FileSystem.readAsStringAsync(fileUri, {
+                        encoding: 'base64' as any,
+                    });
+                    collected.push({
+                        mediaType: mime,
+                        data: base64,
+                        previewUri: `data:${mime};base64,${base64}`,
+                    });
+                } catch (err) {
+                    console.warn('[MultiTextInput] failed to read pasted file', err);
+                }
+            } else {
+                collected.push({
+                    mediaType: mime,
+                    data: item.data,
+                    previewUri: `data:${mime};base64,${item.data}`,
+                });
+            }
+        }
+        if (collected.length > 0) {
+            onPasteImages(collected);
+        }
+    }, [onPasteImages]);
+
     const handleSelectionChange = React.useCallback((e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
         if (e.nativeEvent.selection) {
             const { start, end } = e.nativeEvent.selection;
@@ -202,7 +267,10 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     return (
         <View style={{ width: '100%' }}>
             {editable ? (
+                // RN's TextInput type predates iOS 16+ image-paste; the prop is passed through
+                // to the native impl at runtime. Cast to any to allow the unrecognized prop.
                 <TextInput
+                    {...(Platform.OS === 'ios' ? { onPaste: handleNativePaste } : {}) as any}
                     ref={inputRef}
                     style={textStyle}
                     placeholder={placeholder}

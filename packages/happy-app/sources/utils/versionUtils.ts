@@ -6,6 +6,14 @@
 export const MINIMUM_CLI_VERSION = '0.10.0';
 
 /**
+ * Minimum CLI version that supports image content blocks in user messages.
+ * Older CLIs strictly validate UserMessage.content as `{type:'text',text}`;
+ * sending an array would fail the schema parse and the message would be dropped.
+ * Bumped when image-paste support landed in the wire protocol.
+ */
+export const MINIMUM_CLI_VERSION_FOR_IMAGES = '1.2.0';
+
+/**
  * Compare two semantic version strings
  * @param version1 First version to compare
  * @param version2 Second version to compare

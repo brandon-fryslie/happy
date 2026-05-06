@@ -394,6 +394,7 @@ export const ja: TranslationStructure = {
     },
 
     agentInput: {
+        attachImage: '画像を添付',
         permissionMode: {
             title: '権限モード',
             default: 'デフォルト',

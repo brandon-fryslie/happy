@@ -393,6 +393,7 @@ export const zhHant: TranslationStructure = {
     },
 
     agentInput: {
+        attachImage: '附加圖片',
         permissionMode: {
             title: '權限模式',
             default: '預設',

@@ -1,5 +1,6 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
+import type { PastedImage } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import {
     getAvailableModels,
@@ -41,7 +42,7 @@ import { prefetchPierreDiff } from '@/components/diff/PierreDiffView';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
-import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import { isVersionSupported, MINIMUM_CLI_VERSION, MINIMUM_CLI_VERSION_FOR_IMAGES } from '@/utils/versionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -308,6 +309,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const deviceType = useDeviceType();
     const isTablet = useIsTablet();
     const [message, setMessage] = React.useState('');
+    const [attachments, setAttachments] = React.useState<PastedImage[]>([]);
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
@@ -320,6 +322,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     const flavor = session.metadata?.flavor;
+    // Image content blocks require both a recent CLI (which extends UserMessageSchema to
+    // accept arrays) AND Claude as the agent. Codex/Gemini/OpenClaw don't yet support image
+    // input through this code path — see brandon-image-input-7cx.2.
+    const supportsImagePaste = isVersionSupported(cliVersion, MINIMUM_CLI_VERSION_FOR_IMAGES)
+        && (flavor === undefined || flavor === 'claude');
     const availableModels = React.useMemo(() => (
         getAvailableModels(flavor, session.metadata, t)
     ), [flavor, session.metadata]);
@@ -507,12 +514,25 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 isPulsing: sessionStatus.isPulsing
             }}
             blockSend={false}
+            attachments={supportsImagePaste ? attachments : undefined}
+            onPasteImages={supportsImagePaste ? ((images) => setAttachments((prev) => [...prev, ...images])) : undefined}
+            onRemoveAttachment={supportsImagePaste ? ((idx) => setAttachments((prev) => prev.filter((_, i) => i !== idx))) : undefined}
             onSend={() => {
-                if (message.trim()) {
-                    setMessage('');
-                    clearDraft();
-                    sync.sendMessage(sessionId, message, { source: 'chat' });
-                }
+                const trimmed = message.trim();
+                if (!trimmed && attachments.length === 0) return;
+                setMessage('');
+                clearDraft();
+                const images = attachments;
+                setAttachments([]);
+                sync.sendMessage(sessionId, trimmed, {
+                    source: 'chat',
+                    images: images.length > 0 ? images.map((img, i) => ({
+                        id: `${Date.now()}-${i}`,
+                        mediaType: img.mediaType,
+                        data: img.data,
+                        previewUri: img.previewUri,
+                    })) : undefined,
+                });
             }}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
             isMicActive={isDisconnected ? false : micButtonState.isMicActive}

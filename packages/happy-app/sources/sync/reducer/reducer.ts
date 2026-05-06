@@ -126,6 +126,7 @@ type ReducerMessage = {
     isThinking?: boolean;
     event: AgentEvent | null;
     tool: ToolCall | null;
+    images?: { mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'; previewUri: string }[];
     meta?: MessageMeta;
 }
 
@@ -654,6 +655,22 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 continue;
             }
 
+            // Extract a flat text representation + image previews from the union content shape.
+            const userText = Array.isArray(msg.content)
+                ? msg.content
+                    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+                    .map(b => b.text)
+                    .join('\n')
+                : msg.content.text;
+            const userImages = Array.isArray(msg.content)
+                ? msg.content
+                    .filter((b): b is { type: 'image'; source: { type: 'base64'; media_type: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'; data: string } } => b.type === 'image')
+                    .map(b => ({
+                        mediaType: b.source.media_type,
+                        previewUri: `data:${b.source.media_type};base64,${b.source.data}`,
+                    }))
+                : undefined;
+
             // Create a new message
             let mid = allocateId();
             state.messages.set(mid, {
@@ -661,9 +678,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 realID: msg.id,
                 role: 'user',
                 createdAt: msg.createdAt,
-                text: msg.content.text,
+                text: userText,
                 tool: null,
                 event: null,
+                images: userImages,
                 meta: msg.meta,
             });
 
@@ -1164,6 +1182,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             createdAt: reducerMsg.createdAt,
             kind: 'user-text',
             text: reducerMsg.text,
+            ...(reducerMsg.images && reducerMsg.images.length > 0 && { images: reducerMsg.images }),
             ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
             meta: reducerMsg.meta
         };

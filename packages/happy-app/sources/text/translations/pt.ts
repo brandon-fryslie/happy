@@ -392,6 +392,7 @@ export const pt: TranslationStructure = {
     },
 
     agentInput: {
+        attachImage: 'Anexar imagem',
         permissionMode: {
             title: 'MODO DE PERMISSÃO',
             default: 'Padrão',

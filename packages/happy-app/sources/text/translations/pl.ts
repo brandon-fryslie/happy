@@ -409,6 +409,7 @@ export const pl: TranslationStructure = {
     },
 
     agentInput: {
+        attachImage: 'Dołącz obraz',
         permissionMode: {
             title: 'TRYB UPRAWNIEŃ',
             default: 'Domyślny',

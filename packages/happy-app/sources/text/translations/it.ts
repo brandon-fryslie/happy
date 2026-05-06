@@ -391,6 +391,7 @@ export const it: TranslationStructure = {
     },
 
     agentInput: {
+        attachImage: 'Allega immagine',
         permissionMode: {
             title: 'MODALITÀ PERMESSI',
             default: 'Predefinito',
