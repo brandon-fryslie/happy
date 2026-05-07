@@ -106,4 +106,8 @@ jobs:
             JOB_FILE="/tmp/home-infra/jobs/happy-server-test.nomad.hcl"
           fi
           nomad job run "$JOB_FILE"
+          # force_pull=true only applies to new allocations. If the job spec
+          # hasn't changed, `nomad job run` is a no-op. Restart the allocation
+          # to force a pull of the new image.
+          nomad job restart -yes "$JOB"
           echo "Deployed $JOB from $JOB_FILE"
