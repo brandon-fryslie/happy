@@ -19,7 +19,13 @@ COPY packages/happy-app/patches packages/happy-app/patches
 
 RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install \
     --frozen-lockfile \
-    --filter happy-app...
+    --filter happy-app... \
+    --config.node-linker=isolated \
+    --config.shamefully-hoist=false \
+    --ignore-scripts
+
+# Skia WASM setup (skipped by --ignore-scripts above; patch-package omitted intentionally — patches are mobile-only)
+RUN pnpm --filter happy-app exec setup-skia-web public
 
 # Stage 2: build the web app
 FROM deps AS builder
