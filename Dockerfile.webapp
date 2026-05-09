@@ -17,13 +17,9 @@ COPY packages/happy-wire/package.json packages/happy-wire/
 # Workspace postinstall requirements
 COPY packages/happy-app/patches packages/happy-app/patches
 
-# The repo defaults to a hoisted linker for local development. Keep this Docker
-# install isolated so unrelated workspace native deps do not get built here.
 RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install \
     --frozen-lockfile \
-    --filter happy-app... \
-    --config.node-linker=isolated \
-    --config.shamefully-hoist=false
+    --filter happy-app...
 
 # Stage 2: build the web app
 FROM deps AS builder
