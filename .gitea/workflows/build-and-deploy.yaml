@@ -24,7 +24,8 @@ on:
 
 env:
   REGISTRY: 192.168.7.208:5000
-  IMAGE: happy-server
+  SERVER_IMAGE: happy-server
+  WEBAPP_IMAGE: happy-webapp
   NOMAD_ADDR: http://192.168.7.217:4646
   NOMAD_VERSION: "1.8.4"
 
@@ -47,20 +48,26 @@ jobs:
             echo "env=test" >> "$GITHUB_OUTPUT"
             echo "tag=test" >> "$GITHUB_OUTPUT"
             echo "extra_tag=pr-${{ gitea.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-            echo "nomad_job=happy-test" >> "$GITHUB_OUTPUT"
+            echo "server_job=happy-test" >> "$GITHUB_OUTPUT"
+            echo "webapp_job=happy-webapp-test" >> "$GITHUB_OUTPUT"
+            echo "server_url=https://happy-server-test.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           elif [ "${{ gitea.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.target }}" = "test" ]; then
             echo "env=test" >> "$GITHUB_OUTPUT"
             echo "tag=test" >> "$GITHUB_OUTPUT"
             echo "extra_tag=$SHA" >> "$GITHUB_OUTPUT"
-            echo "nomad_job=happy-test" >> "$GITHUB_OUTPUT"
+            echo "server_job=happy-test" >> "$GITHUB_OUTPUT"
+            echo "webapp_job=happy-webapp-test" >> "$GITHUB_OUTPUT"
+            echo "server_url=https://happy-server-test.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           else
             echo "env=prod" >> "$GITHUB_OUTPUT"
             echo "tag=latest" >> "$GITHUB_OUTPUT"
             echo "extra_tag=$SHA" >> "$GITHUB_OUTPUT"
-            echo "nomad_job=happy" >> "$GITHUB_OUTPUT"
+            echo "server_job=happy" >> "$GITHUB_OUTPUT"
+            echo "webapp_job=happy-webapp" >> "$GITHUB_OUTPUT"
+            echo "server_url=https://happy-server.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build image
+      - name: Build server image
         env:
           SHA: ${{ steps.target.outputs.sha }}
           TAG: ${{ steps.target.outputs.tag }}
@@ -68,19 +75,35 @@ jobs:
         run: |
           set -euo pipefail
           docker build \
-            --tag "$REGISTRY/$IMAGE:$TAG" \
-            --tag "$REGISTRY/$IMAGE:$EXTRA_TAG" \
+            --tag "$REGISTRY/$SERVER_IMAGE:$TAG" \
+            --tag "$REGISTRY/$SERVER_IMAGE:$EXTRA_TAG" \
             .
 
-      - name: Push image
+      - name: Build webapp image
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+          EXTRA_TAG: ${{ steps.target.outputs.extra_tag }}
+          SERVER_URL: ${{ steps.target.outputs.server_url }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --file Dockerfile.webapp \
+            --build-arg EXPO_PUBLIC_HAPPY_SERVER_URL="$SERVER_URL" \
+            --tag "$REGISTRY/$WEBAPP_IMAGE:$TAG" \
+            --tag "$REGISTRY/$WEBAPP_IMAGE:$EXTRA_TAG" \
+            .
+
+      - name: Push images
         env:
           TAG: ${{ steps.target.outputs.tag }}
           EXTRA_TAG: ${{ steps.target.outputs.extra_tag }}
         run: |
           set -euo pipefail
-          docker push "$REGISTRY/$IMAGE:$TAG"
-          docker push "$REGISTRY/$IMAGE:$EXTRA_TAG"
-          echo "Pushed $REGISTRY/$IMAGE:$TAG and :$EXTRA_TAG"
+          docker push "$REGISTRY/$SERVER_IMAGE:$TAG"
+          docker push "$REGISTRY/$SERVER_IMAGE:$EXTRA_TAG"
+          docker push "$REGISTRY/$WEBAPP_IMAGE:$TAG"
+          docker push "$REGISTRY/$WEBAPP_IMAGE:$EXTRA_TAG"
+          echo "Pushed server and webapp images (:$TAG and :$EXTRA_TAG)"
 
       - name: Install nomad CLI
         run: |
@@ -95,9 +118,9 @@ jobs:
           set -euo pipefail
           git clone --depth 1 https://gitea.sanctuary.gdn/brandon-fryslie/homelab-infra.git /tmp/home-infra
 
-      - name: Deploy
+      - name: Deploy server
         env:
-          JOB: ${{ steps.target.outputs.nomad_job }}
+          SERVER_JOB: ${{ steps.target.outputs.server_job }}
           ENV: ${{ steps.target.outputs.env }}
         run: |
           set -euo pipefail
@@ -106,8 +129,19 @@ jobs:
             JOB_FILE="/tmp/home-infra/jobs/happy-server-test.nomad.hcl"
           fi
           nomad job run "$JOB_FILE"
-          # force_pull=true only applies to new allocations. If the job spec
-          # hasn't changed, `nomad job run` is a no-op. Restart the allocation
-          # to force a pull of the new image.
-          nomad job restart -yes "$JOB"
-          echo "Deployed $JOB from $JOB_FILE"
+          nomad job restart -yes "$SERVER_JOB"
+          echo "Deployed $SERVER_JOB from $JOB_FILE"
+
+      - name: Deploy webapp
+        env:
+          WEBAPP_JOB: ${{ steps.target.outputs.webapp_job }}
+          ENV: ${{ steps.target.outputs.env }}
+        run: |
+          set -euo pipefail
+          JOB_FILE="/tmp/home-infra/jobs/happy-webapp.nomad.hcl"
+          if [ "$ENV" = "test" ]; then
+            JOB_FILE="/tmp/home-infra/jobs/happy-webapp-test.nomad.hcl"
+          fi
+          nomad job run "$JOB_FILE"
+          nomad job restart -yes "$WEBAPP_JOB"
+          echo "Deployed $WEBAPP_JOB from $JOB_FILE"
