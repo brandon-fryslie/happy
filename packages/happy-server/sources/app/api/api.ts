@@ -39,8 +39,8 @@ export async function startApi() {
     });
     app.register(import('@fastify/cors'), {
         origin: '*',
-        allowedHeaders: '*',
-        methods: ['GET', 'POST', 'PUT', 'DELETE']
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Happy-Client'],
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
     });
 
     // Required for local-mode attachment uploads (PUT /v1/sessions/:id/attachments/:file).
