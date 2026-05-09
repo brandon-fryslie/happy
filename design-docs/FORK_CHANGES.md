@@ -12,6 +12,59 @@ Fork remote: `git@github.com:brandon-fryslie/happy.git` (`origin`).
 
 ## Merged-to-fork-`main` changes (vs `upstream/main`)
 
+### Homelab deployment: server, webapp, and Expo dev server on `sanctuary.gdn`
+
+Adds Docker build + Nomad deploy configuration for running the full Happy stack on a personal homelab, routing through Tailscale + Caddy at `*.sanctuary.gdn`. Upstream has no deployment infrastructure of this kind.
+
+**What's added:**
+- `Dockerfile.webapp` — two-stage build: isolated-linker pnpm install (avoids `node-pty` gyp on Alpine), `expo export --platform web`, served by nginx. `EXPO_PUBLIC_HAPPY_SERVER_URL` is a build arg.
+- `Dockerfile.expo-dev` — same isolated-linker `deps` stage; runs `expo start --non-interactive` instead of exporting. `EXPO_PACKAGER_PROXY_URL` and `EXPO_PUBLIC_HAPPY_SERVER_URL` are runtime env vars set by the Nomad job so the image is hostname-agnostic.
+- `.gitea/workflows/build-and-deploy.yaml` — CI pipeline: builds `happy-server`, `happy-webapp`, and `happy-expo-dev` images on push to `main`; deploys them to Nomad. PR builds deploy `happy-server` + `happy-webapp` test variants only (no test expo server).
+- `packages/happy-app/sources/sync/serverConfig.ts` — default server URL changed from `api.cluster-fluster.com` to `happy-server.sanctuary.gdn` so iOS dev builds target homelab without manual configuration.
+
+**Infra (tracked in `home-infra` repo, not here):** Nomad jobs for `happy-server`, `happy-server-test`, `happy-webapp`, `happy-webapp-test`, `happy-expo`; Cloudflare DNS A-records for all five subdomains; NixOS firewall ports 8091–8093.
+
+**Key design decision — `EXPO_PACKAGER_PROXY_URL` for Expo dev server:** Metro embeds its own hostname:port into manifest URLs. Setting `EXPO_PACKAGER_PROXY_URL=https://happy-expo.sanctuary.gdn` overrides this to the Caddy-terminated HTTPS URL so all bundle and hot-reload WebSocket traffic goes through Caddy on 443, matching the rest of the stack. Phone connects by entering `https://happy-expo.sanctuary.gdn` in the Expo dev client's "Change bundle location" menu.
+
+**Files:** `Dockerfile.webapp`, `Dockerfile.expo-dev`, `.gitea/workflows/build-and-deploy.yaml`, `packages/happy-app/sources/sync/serverConfig.ts`.
+
+### Image paste in user messages (lit `brandon-image-input-7cx.1`)
+
+End-to-end image input for Claude sessions. The user pastes a screenshot in the mobile/web app; the image attaches as a thumbnail chip alongside the in-progress text; on send, the message rides through the encrypted protocol as Anthropic-shaped image content blocks and reaches the Claude SDK's `query()` directly — no translation layer. Claude's response, the message history, and round-trips render the inline base64 in `<Image>` thumbnails on every connected client.
+
+**Why this is fork-only for now:** the upstream wire schema (`@slopus/happy-wire`'s `UserMessageSchema`) is text-only — `content: { type: "text", text: string }`. Extending it requires bumping the CLI minimum version because old CLIs Zod-reject anything that isn't that exact shape. Upstream maintainers may want a different transport (encrypted-upload via the Artifact pattern) before accepting; this fork ships the pragmatic inline-base64 path first.
+
+**Wire shape — same as Anthropic's `ContentBlockParam`:** `UserMessage.content` becomes a union of the legacy text object **or** `Array<TextBlock | ImageBlock>` where `ImageBlock = {type:'image', source:{type:'base64', media_type, data}}`. `claudeRemote.ts` no longer stringifies before pushing to the SDK — the wire shape *is* the SDK shape, so content arrays pass through unchanged.
+
+**Transport choice:** inline base64 inside the existing encrypted message envelope. No new server endpoints. No S3 lifecycle. Claude API accepts inline base64 natively (cap ~5 MB / image; screenshots are typically under 1 MB). Encrypted upload via the Artifact pattern is the planned follow-up for >5 MB images (lit `brandon-image-input-7cx.3`).
+
+**Compatibility:** new `MINIMUM_CLI_VERSION_FOR_IMAGES = '1.2.0'` in `packages/happy-app/sources/utils/versionUtils.ts`. The attach UI / paste capture in `SessionView.tsx` is gated on `isVersionSupported(cliVersion, MINIMUM_CLI_VERSION_FOR_IMAGES) && (flavor === undefined || flavor === 'claude')`. Older CLIs (or non-Claude agents) silently lose the paste UX rather than failing schema validation server-side. CLI bumped 1.1.8-1 → 1.2.0 in this change.
+
+**Files touched:**
+- `packages/happy-wire/src/legacyProtocol.ts` — extend `UserMessageSchema`, export `TextBlock` / `ImageBlock` / `ContentBlock`.
+- `packages/happy-cli/src/api/types.ts` — mirror the wire schema; add `extractMessageText` / `getMessageContent` helpers.
+- `packages/happy-cli/src/utils/MessageQueue2.ts` — `QueueMessage = string | ContentBlock[]`; `mergeQueueMessages` produces a unified array when any item is one, joins as string otherwise. `flattenQueueMessageToText` is the boundary helper for non-Claude agents.
+- `packages/happy-cli/src/claude/claudeRemote.ts`, `claudeRemoteLauncher.ts` — `nextMessage` returns `string | ContentBlock[]`; SDK push site forwards content as-is.
+- `packages/happy-cli/src/{codex,gemini,openclaw,agent/acp}/run*.ts` — flatten content arrays to text at the agent boundary (image blocks dropped for non-Claude agents until per-agent support lands).
+- `packages/happy-app/sources/sync/sync.ts` — `sendMessage` accepts `images?: ImageAttachment[]`; builds the wire content array when present.
+- `packages/happy-app/sources/sync/typesRaw.ts` + `reducer/reducer.ts` — schema accepts the union; reducer extracts text + image previews from either shape; `UserTextMessage` carries optional `images` for render.
+- `packages/happy-app/sources/components/MultiTextInput.web.tsx` — DOM `paste` event handler; FileReader → base64 → `onPasteImages`.
+- `packages/happy-app/sources/components/MultiTextInput.tsx` — iOS 16+ `TextInput.onPaste`; supports both raw-base64 items and `file://` URIs (read via `expo-file-system`).
+- `packages/happy-app/sources/components/AgentInput.tsx` — thumbnail strip with X-to-remove; `attachments` / `onPasteImages` / `onAttachPress` props; send button activates with attachments alone.
+- `packages/happy-app/sources/components/MessageView.tsx` — `UserTextBlock` renders attached images as `<Image>` tiles above the text bubble.
+- `packages/happy-app/sources/-session/SessionView.tsx` — version-gated wiring of attachments state into AgentInput.
+- All 10 translation files — `agentInput.attachImage` added.
+
+**Why CLI bumped to 1.2.0:** old `UserMessageSchema` Zod-validates strictly against `{type:'text',text}`; an array trips the parse at `apiSession.routeIncomingMessage` and the message gets routed to `emit('message', ...)` instead of `pendingMessageCallback`. The bump lets the app detect compatible CLIs and show the paste UI only when it'll actually work.
+
+**Out of scope (tracked under epic `brandon-image-input-7cx`):**
+- Codex / Gemini image content (`.2`)
+- Encrypted-upload path for large images (`.3`)
+- Web/Tauri drag-and-drop (`.4`)
+- Tool-result image rendering (`.5`)
+- Voice-mode image input (`.6`)
+- Native Android image-paste investigation (`.7`)
+
 ### Summarize-and-speak: on-device TTS for session messages (lit `brandon-tts-summarize-2yd`)
 
 A new "Speak Sessions" feature in the mobile app that summarizes recent agent/user messages with a user-supplied OpenAI-compatible LLM and reads the summary aloud via the user's ElevenLabs API key. The defining architectural choice: **the feature is fully on-device**. The Happy server is normally blind to message content (E2E encrypted via libsodium); routing decrypted text through the server for LLM summarization would punch a hole in that invariant. React Native `fetch` calls have no CORS, so the app calls user-configured LLM and ElevenLabs endpoints directly with no backend involvement.
