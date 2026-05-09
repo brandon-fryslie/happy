@@ -146,7 +146,7 @@ jobs:
           if [ "$ENV" = "test" ]; then
             JOB_FILE="/tmp/home-infra/jobs/happy-server-test.nomad.hcl"
           fi
-          nomad job run "$JOB_FILE"
+          nomad job run -detach "$JOB_FILE"
           nomad job restart -yes "$SERVER_JOB"
           echo "Deployed $SERVER_JOB from $JOB_FILE"
 
@@ -160,7 +160,7 @@ jobs:
           if [ "$ENV" = "test" ]; then
             JOB_FILE="/tmp/home-infra/jobs/happy-webapp-test.nomad.hcl"
           fi
-          nomad job run "$JOB_FILE"
+          nomad job run -detach "$JOB_FILE"
           nomad job restart -yes "$WEBAPP_JOB"
           echo "Deployed $WEBAPP_JOB from $JOB_FILE"
 
@@ -170,6 +170,6 @@ jobs:
           EXPO_JOB: ${{ steps.target.outputs.expo_job }}
         run: |
           set -euo pipefail
-          nomad job run /tmp/home-infra/jobs/happy-expo.nomad.hcl
+          nomad job run -detach /tmp/home-infra/jobs/happy-expo.nomad.hcl
           nomad job restart -yes "$EXPO_JOB"
           echo "Deployed $EXPO_JOB"
