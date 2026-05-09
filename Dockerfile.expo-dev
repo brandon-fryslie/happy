@@ -1,0 +1,42 @@
+# Stage 1: install dependencies with workspace context
+FROM node:20-alpine AS deps
+
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+
+WORKDIR /repo
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY scripts ./scripts
+COPY patches ./patches
+
+RUN mkdir -p packages/happy-app packages/happy-wire
+
+COPY packages/happy-app/package.json packages/happy-app/
+COPY packages/happy-wire/package.json packages/happy-wire/
+
+COPY packages/happy-app/patches packages/happy-app/patches
+
+RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install \
+    --frozen-lockfile \
+    --filter happy-app... \
+    --config.node-linker=isolated \
+    --config.shamefully-hoist=false \
+    --ignore-scripts
+
+# Stage 2: copy source and run the Metro dev server
+FROM deps AS runner
+
+COPY packages/happy-wire ./packages/happy-wire
+COPY packages/happy-app ./packages/happy-app
+
+RUN pnpm --filter @slopus/happy-wire build
+
+# EXPO_PACKAGER_PROXY_URL tells Metro what external URL to embed in the
+# manifest served to devices — set at runtime in the Nomad job so this
+# image works against any hostname without rebuilding.
+# EXPO_PUBLIC_HAPPY_SERVER_URL is read by Metro per-bundle at dev-server
+# runtime, so runtime env is sufficient (no build-time bake needed).
+
+EXPOSE 8081
+
+CMD ["pnpm", "--filter", "happy-app", "exec", "expo", "start", "--non-interactive"]

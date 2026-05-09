@@ -12,6 +12,22 @@ Fork remote: `git@github.com:brandon-fryslie/happy.git` (`origin`).
 
 ## Merged-to-fork-`main` changes (vs `upstream/main`)
 
+### Homelab deployment: server, webapp, and Expo dev server on `sanctuary.gdn`
+
+Adds Docker build + Nomad deploy configuration for running the full Happy stack on a personal homelab, routing through Tailscale + Caddy at `*.sanctuary.gdn`. Upstream has no deployment infrastructure of this kind.
+
+**What's added:**
+- `Dockerfile.webapp` — two-stage build: isolated-linker pnpm install (avoids `node-pty` gyp on Alpine), `expo export --platform web`, served by nginx. `EXPO_PUBLIC_HAPPY_SERVER_URL` is a build arg.
+- `Dockerfile.expo-dev` — same isolated-linker `deps` stage; runs `expo start --non-interactive` instead of exporting. `EXPO_PACKAGER_PROXY_URL` and `EXPO_PUBLIC_HAPPY_SERVER_URL` are runtime env vars set by the Nomad job so the image is hostname-agnostic.
+- `.gitea/workflows/build-and-deploy.yaml` — CI pipeline: builds `happy-server`, `happy-webapp`, and `happy-expo-dev` images on push to `main`; deploys them to Nomad. PR builds deploy `happy-server` + `happy-webapp` test variants only (no test expo server).
+- `packages/happy-app/sources/sync/serverConfig.ts` — default server URL changed from `api.cluster-fluster.com` to `happy-server.sanctuary.gdn` so iOS dev builds target homelab without manual configuration.
+
+**Infra (tracked in `home-infra` repo, not here):** Nomad jobs for `happy-server`, `happy-server-test`, `happy-webapp`, `happy-webapp-test`, `happy-expo`; Cloudflare DNS A-records for all five subdomains; NixOS firewall ports 8091–8093.
+
+**Key design decision — `EXPO_PACKAGER_PROXY_URL` for Expo dev server:** Metro embeds its own hostname:port into manifest URLs. Setting `EXPO_PACKAGER_PROXY_URL=https://happy-expo.sanctuary.gdn` overrides this to the Caddy-terminated HTTPS URL so all bundle and hot-reload WebSocket traffic goes through Caddy on 443, matching the rest of the stack. Phone connects by entering `https://happy-expo.sanctuary.gdn` in the Expo dev client's "Change bundle location" menu.
+
+**Files:** `Dockerfile.webapp`, `Dockerfile.expo-dev`, `.gitea/workflows/build-and-deploy.yaml`, `packages/happy-app/sources/sync/serverConfig.ts`.
+
 ### Image paste in user messages (lit `brandon-image-input-7cx.1`)
 
 End-to-end image input for Claude sessions. The user pastes a screenshot in the mobile/web app; the image attaches as a thumbnail chip alongside the in-progress text; on send, the message rides through the encrypted protocol as Anthropic-shaped image content blocks and reaches the Claude SDK's `query()` directly — no translation layer. Claude's response, the message history, and round-trips render the inline base64 in `<Image>` thumbnails on every connected client.
