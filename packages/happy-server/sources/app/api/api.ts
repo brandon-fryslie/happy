@@ -38,8 +38,8 @@ export async function startApi() {
     });
     app.register(import('@fastify/cors'), {
         origin: '*',
-        allowedHeaders: '*',
-        methods: ['GET', 'POST', 'DELETE']
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Happy-Client'],
+        methods: ['GET', 'POST', 'DELETE', 'OPTIONS']
     });
     app.get('/', function (request, reply) {
         reply.send('Welcome to Happy Server!');
