@@ -50,6 +50,10 @@ export const SettingsSchema = z.object({
         machineId: z.string(),
         path: z.string()
     })).describe('Last 10 machine-path combinations, ordered by most recent first'),
+    projectsMachinePaths: z.array(z.object({
+        machineId: z.string(),
+        path: z.string(),
+    })).describe('Per-machine configured project directory roots — shown as browseable subdirectory lists when starting a new session'),
     lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
@@ -126,6 +130,7 @@ export const settingsDefaults: Settings = {
 
     preferredLanguage: null,
     recentMachinePaths: [],
+    projectsMachinePaths: [],
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
