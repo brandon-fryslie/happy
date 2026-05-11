@@ -273,6 +273,13 @@ export const zhHant: TranslationStructure = {
         title: '開始新工作階段',
         machineOffline: '裝置離線',
         switchMachinesHint: '• 點擊上方的裝置來切換裝置',
+        projects: '專案',
+        recent: '最近',
+        noRecentProjects: '尚無最近的專案',
+        addProjectDirectory: '新增為專案目錄',
+        removeProjectDirectory: '移除專案目錄',
+        noProjectDirectories: '使用 + 新增根目錄',
+        emptyProjectDirectory: '找不到子目錄',
     },
 
     sessionHistory: {

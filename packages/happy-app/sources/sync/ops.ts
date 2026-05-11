@@ -69,7 +69,7 @@ interface SessionListDirectoryRequest {
     path: string;
 }
 
-interface DirectoryEntry {
+export interface DirectoryEntry {
     name: string;
     type: 'file' | 'directory' | 'other';
     size?: number;
@@ -572,6 +572,30 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
     }
 }
 
+/**
+ * List directory contents on a machine (no active session required).
+ * Uses the listDirectory handler registered on the machine daemon.
+ */
+export async function machineListDirectory(machineId: string, path: string): Promise<{
+    success: boolean;
+    entries?: DirectoryEntry[];
+    error?: string;
+}> {
+    try {
+        const result = await apiSocket.machineRPC<{
+            success: boolean;
+            entries?: DirectoryEntry[];
+            error?: string;
+        }, { path: string }>(machineId, 'listDirectory', { path });
+        return result;
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+        };
+    }
+}
+
 // Export types for external use
 export type {
     SessionBashRequest,
@@ -579,7 +603,6 @@ export type {
     SessionReadFileResponse,
     SessionWriteFileResponse,
     SessionListDirectoryResponse,
-    DirectoryEntry,
     SessionGetDirectoryTreeResponse,
     TreeNode,
     SessionRipgrepResponse,

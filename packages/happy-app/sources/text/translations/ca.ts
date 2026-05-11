@@ -273,6 +273,13 @@ export const ca: TranslationStructure = {
         title: 'Iniciar nova sessió',
         machineOffline: 'La màquina està fora de línia',
         switchMachinesHint: '• Canvia de màquina fent clic a la màquina de dalt',
+        projects: 'Projectes',
+        recent: 'Recents',
+        noRecentProjects: 'cap projecte recent',
+        addProjectDirectory: 'Afegir com a directori de projectes',
+        removeProjectDirectory: 'Eliminar directori de projectes',
+        noProjectDirectories: 'Afegeix un directori arrel amb +',
+        emptyProjectDirectory: 'No s\'han trobat subdirectoris',
     },
 
     sessionHistory: {

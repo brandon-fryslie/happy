@@ -40,6 +40,7 @@ import { createWorktree, listWorktrees } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { useProjectDirectories } from '@/hooks/useProjectDirectories';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { Modal } from '@/modal';
 import type { Machine, Session } from '@/sync/storageTypes';
@@ -293,6 +294,7 @@ function PathPickerContent({
     items,
     value,
     homeDir,
+    machineId,
     onChangeValue,
     onDone,
 }: {
@@ -300,6 +302,7 @@ function PathPickerContent({
     items: PickerItem[];
     value: string | null;
     homeDir?: string;
+    machineId: string | null;
     onChangeValue: (value: string) => void;
     onDone?: () => void;
 }) {
@@ -345,6 +348,17 @@ function PathPickerContent({
         setSelection(event.nativeEvent.selection);
     }, []);
     const doneIconColor = theme.colors.header.tint;
+
+    const { groups: projectGroups, addProjectPath, removeProjectPath } = useProjectDirectories(machineId, homeDir);
+
+    const handleAddProjectPath = React.useCallback(() => {
+        const trimmed = currentValue.trim();
+        if (!trimmed) return;
+        addProjectPath(trimmed);
+    }, [currentValue, addProjectPath]);
+
+    const canAddCurrentPath = currentValue.trim().length > 0 &&
+        !projectGroups.some(g => g.rootPath === currentValue.trim());
 
     return (
         <View style={pickerStyles.container}>
@@ -416,11 +430,106 @@ function PathPickerContent({
                 </Text>
             )}
 
-            <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
-                Recent
-            </Text>
+            {/* Projects section — per-machine configured root directories */}
+            <View style={pickerStyles.sectionRow}>
+                <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
+                    {t('newSession.projects')}
+                </Text>
+                {canAddCurrentPath && (
+                    <Pressable
+                        onPress={handleAddProjectPath}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={(p) => [pickerStyles.sectionAction, { opacity: p.pressed ? 0.5 : 1 }]}
+                        accessibilityLabel={t('newSession.addProjectDirectory')}
+                    >
+                        <Ionicons name="add-circle-outline" size={18} color={theme.colors.textSecondary} />
+                    </Pressable>
+                )}
+            </View>
 
             <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
+                {projectGroups.length === 0 && (
+                    <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
+                        {t('newSession.noProjectDirectories')}
+                    </Text>
+                )}
+
+                {projectGroups.map((group) => (
+                    <View key={group.rootPath}>
+                        {/* Group header row with root path + remove button */}
+                        <View style={pickerStyles.projectGroupHeader}>
+                            <Ionicons name="folder-open-outline" size={14} color={theme.colors.textSecondary} />
+                            <Text
+                                style={[pickerStyles.projectGroupTitle, { color: theme.colors.textSecondary }]}
+                                numberOfLines={1}
+                            >
+                                {group.rootPath}
+                            </Text>
+                            <Pressable
+                                onPress={() => removeProjectPath(group.rootPath)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                style={(p) => [{ opacity: p.pressed ? 0.5 : 1 }]}
+                                accessibilityLabel={t('newSession.removeProjectDirectory')}
+                            >
+                                <Ionicons name="close-circle-outline" size={16} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        </View>
+
+                        {/* Subdirectory items */}
+                        {group.loading && (
+                            <ActivityIndicator
+                                size="small"
+                                color={theme.colors.textSecondary}
+                                style={pickerStyles.projectGroupLoading}
+                            />
+                        )}
+                        {!group.loading && group.error && (
+                            <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
+                                {group.error}
+                            </Text>
+                        )}
+                        {!group.loading && !group.error && group.items.map((item) => {
+                            const isSelected = item.key === matchedItemKey ||
+                                normalizePathForComparison(item.key, homeDir) === normalizePathForComparison(currentValue, homeDir);
+                            return (
+                                <Pressable
+                                    key={item.key}
+                                    style={(p) => [pickerStyles.option, pickerStyles.optionIndented, p.pressed && pickerStyles.optionPressed]}
+                                    onPress={() => handleSuggestionPress(item)}
+                                >
+                                    <Ionicons
+                                        name="folder-outline"
+                                        size={16}
+                                        color={theme.colors.textSecondary}
+                                    />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[pickerStyles.optionText, { color: theme.colors.text }]}>
+                                            {item.label}
+                                        </Text>
+                                    </View>
+                                    {isSelected && (
+                                        <Ionicons
+                                            name="checkmark-circle"
+                                            size={18}
+                                            color={theme.colors.button.primary.background}
+                                        />
+                                    )}
+                                </Pressable>
+                            );
+                        })}
+                        {!group.loading && !group.error && group.items.length === 0 && (
+                            <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
+                                {t('newSession.emptyProjectDirectory')}
+                            </Text>
+                        )}
+                    </View>
+                ))}
+
+                {/* Recent section */}
+                <Text style={[pickerStyles.sectionLabel, pickerStyles.sectionLabelInScroll, { color: theme.colors.textSecondary }]}>
+                    {t('newSession.recent')}
+                </Text>
+
                 {items.map((item) => {
                     const isSelected = item.key === matchedItemKey;
 
@@ -453,7 +562,7 @@ function PathPickerContent({
 
                 {items.length === 0 && (
                     <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
-                        no recent projects yet
+                        {t('newSession.noRecentProjects')}
                     </Text>
                 )}
             </ScrollView>
@@ -1140,6 +1249,7 @@ function NewSessionScreen() {
                                     items={pathItems}
                                     value={selectedPath}
                                     homeDir={selectedHomeDir}
+                                    machineId={selectedMachineId}
                                     onChangeValue={setSelectedPath}
                                     onDone={() => setActivePicker(null)}
                                 />
@@ -1549,6 +1659,37 @@ const pickerStyles = {
         paddingVertical: 20,
         ...Typography.default(),
         ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    } as const,
+    sectionRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
+        paddingRight: 4,
+    },
+    sectionAction: {
+        padding: 4,
+    } as const,
+    sectionLabelInScroll: {
+        paddingTop: 12,
+    } as const,
+    projectGroupHeader: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+    },
+    projectGroupTitle: {
+        flex: 1,
+        fontSize: 13,
+        ...Typography.default('semiBold'),
+        ...Platform.select({ web: { userSelect: 'none' } as any, default: {} }),
+    } as const,
+    projectGroupLoading: {
+        paddingVertical: 8,
+    } as const,
+    optionIndented: {
+        paddingLeft: 24,
     } as const,
 };
 

@@ -261,6 +261,13 @@ export const ru: TranslationStructure = {
         title: 'Начать новую сессию',
         machineOffline: 'Машина недоступна',
         switchMachinesHint: '• Переключите машину, нажав на неё выше',
+        projects: 'Проекты',
+        recent: 'Недавние',
+        noRecentProjects: 'нет недавних проектов',
+        addProjectDirectory: 'Добавить как директорию проектов',
+        removeProjectDirectory: 'Удалить директорию проектов',
+        noProjectDirectories: 'Добавьте корневую директорию с +',
+        emptyProjectDirectory: 'Поддиректорий не найдено',
     },
 
     sessionHistory: {

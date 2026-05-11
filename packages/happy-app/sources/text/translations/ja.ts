@@ -274,6 +274,13 @@ export const ja: TranslationStructure = {
         title: '新しいセッションを開始',
         machineOffline: 'マシンがオフラインです',
         switchMachinesHint: '• 上のマシンをクリックしてマシンを切り替えてください',
+        projects: 'プロジェクト',
+        recent: '最近',
+        noRecentProjects: '最近のプロジェクトはありません',
+        addProjectDirectory: 'プロジェクトディレクトリとして追加',
+        removeProjectDirectory: 'プロジェクトディレクトリを削除',
+        noProjectDirectories: '+ でルートディレクトリを追加',
+        emptyProjectDirectory: 'サブディレクトリが見つかりません',
     },
 
     sessionHistory: {

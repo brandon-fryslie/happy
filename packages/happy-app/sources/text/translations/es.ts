@@ -273,6 +273,13 @@ export const es: TranslationStructure = {
         title: 'Iniciar nueva sesión',
         machineOffline: 'La máquina está desconectada',
         switchMachinesHint: '• Cambia de máquina haciendo clic en la máquina de arriba',
+        projects: 'Proyectos',
+        recent: 'Recientes',
+        noRecentProjects: 'sin proyectos recientes',
+        addProjectDirectory: 'Añadir como directorio de proyectos',
+        removeProjectDirectory: 'Eliminar directorio de proyectos',
+        noProjectDirectories: 'Añade un directorio raíz con +',
+        emptyProjectDirectory: 'No se encontraron subdirectorios',
     },
 
     sessionHistory: {
