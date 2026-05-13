@@ -49,8 +49,7 @@ The fix in `2a899e1b` (orphan claude reaper) suggests this area is fragile. Like
 
 1. **`pnpm fork:diff`** — Convenience script wrapping `git log upstream/main..HEAD --stat` so the divergence is one keystroke away.
 2. **CI to keep the fork honest** — A scheduled GitHub Action that fetches upstream and posts a comment listing new upstream commits not yet rebased / merged.
-3. **Pre-commit hook to lint `FORK_CHANGES.md`** — Block commits that change files outside the standard "no need to track" set without a corresponding `FORK_CHANGES.md` entry. Tactical, but cheap insurance.
-4. **`happy upstream-status` CLI subcommand** — Dev-only; tells the user how far behind upstream the local fork is and which packages are most affected.
+3. **`happy upstream-status` CLI subcommand** — Dev-only; tells the user how far behind upstream the local fork is and which packages are most affected.
 
 ## G. Speculative / longer bets
 
