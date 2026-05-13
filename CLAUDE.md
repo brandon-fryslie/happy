@@ -2,8 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **This is a fork.** Track all fork-specific changes in [`design-docs/FORK_CHANGES.md`](./design-docs/FORK_CHANGES.md). When you make any change that diverges from upstream `slopus/happy`, update that file in the same commit. Brainstorming notes live in [`design-docs/BRAINSTORM_INITIAL.md`](./design-docs/BRAINSTORM_INITIAL.md).
-
 ## What this is
 
 Happy is a mobile/web/desktop client + CLI wrapper for Claude Code and Codex with end-to-end encrypted sync. The user runs `happy claude` or `happy codex` instead of the underlying agent; the CLI encrypts session data and pushes it to the Happy server, where mobile/web clients can pick up the conversation, send messages, and approve tool permissions remotely.
