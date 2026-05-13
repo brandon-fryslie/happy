@@ -1337,6 +1337,7 @@ function NewSessionScreen() {
                             items={pathItems}
                             value={selectedPath}
                             homeDir={selectedHomeDir}
+                            machineId={selectedMachineId}
                             onChangeValue={setSelectedPath}
                             onDone={() => setActivePicker(null)}
                         />
