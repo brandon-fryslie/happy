@@ -1,103 +1,98 @@
-# Changelog
+# May 7 — Session retention, new sidebar, code editor, session branching
 
-## Version 10 - 2026-05-05
+Desktop got a full refresh with a file browser, built-in editor, and zen mode. Sessions can now be branched or rewound.
 
-Have your sessions read aloud. Bring your own LLM and ElevenLabs voice and the app summarizes new agent activity, then speaks it on your device — keys and message text never leave your phone.
+**Session retention: 2 months.** Older sessions are cleaned up automatically to keep storage costs manageable.
 
-- New "Speak Sessions" feature: summarize-and-speak with your own OpenAI-compatible LLM and ElevenLabs voice
-- Tap the speaker icon in any session to hear what's new since you last listened, or long-press for "From your last message" / "Restart from beginning"
-- Optional auto-mode automatically reads each new agent response when the app is in the foreground
-- New TTS settings screen for ElevenLabs voice ID, ElevenLabs API key, and OpenAI-compatible base URL / API key / model — works with OpenAI, OpenRouter, local Ollama, vLLM, and any compatible endpoint
-- Reuses your existing BYO ElevenLabs voice key when no TTS-specific key is set
-- Everything runs on-device. No messages or keys are sent to Happy servers.
+## Features and fixes
 
-## Version 9 - 2026-04-15
+- Thinking effort selection bug fixed.
+- Smarter push notifications — suppressed when you're already in the app.
+- Unread dots persist on sessions until you open them.
+- Redesigned sidebar with file browser, code editor, and zen mode.
+- Fixed stale sessions refusing to load, blank screen on launch, dual cursors in remote mode, `claude --resume` not finding Happy sessions.
 
-Clean up stale machines cluttering your settings and session picker. Offline machines are now hidden by default with a one-tap reveal, and you can permanently remove machines you no longer use.
+## Experimental
 
-- Offline machines are now hidden from the Settings machine list by default, with a button to reveal them
-- Added a delete option in machine details to remove stale machines from your account
-- Session history is preserved when a machine is deleted
+Enable in Settings → Features:
 
-## Version 8 - 2026-04-12
+- File diffs sidebar — see git changes next to chat on desktop.
+- Session fork & rewind — branch off any session or roll back to any message.
 
-This update migrates the monorepo from Yarn to pnpm, delivering dramatically faster dependency installs for developers and CI.
+# April 26 — Voice fixes, diffs, scroll
 
-- Migrated package manager from Yarn 1 to pnpm 10 for ~11x faster installs
-- Updated all CI workflows, Dockerfiles, and build scripts for pnpm compatibility
-- Improved dependency resolution with workspace protocol for internal packages
+Voice actually works reliably now, plus better content rendering.
 
-## Version 7 - 2026-04-08
+- Voice calls no longer break on second session.
+- Tables and code blocks scroll horizontally.
+- New diff viewer with syntax highlighting and unified/split toggle.
+- Model and effort choices persist on mobile.
+- Permission prompts no longer get lost.
+- Settings stop randomly resetting during sync.
+- Scroll-to-bottom button in chat.
+- Delete machines from settings.
 
-This preview release expands the current update with the latest Gemini models, a smarter voice onboarding flow, and more reliable Happy CLI sessions for plan approvals and Codex turns.
+# April 8 — Gemini models, voice onboarding, CLI fixes
 
-- Update Happy CLI with `npm i -g happy`
-- Added the latest Gemini models to the picker
-- Improved voice onboarding with smarter first-run prompts and clearer upgrade guidance for free users
-- Fixed Happy CLI plan approval flows so Accept and Reject buttons show up reliably in plan mode
-- Fixed Happy CLI background task updates and Codex turns that could sometimes hang or fail to complete
+New models, smoother onboarding, fewer CLI hangs.
 
-## Version 6 - 2026-03-19
+- Latest Gemini models in the picker.
+- Better voice onboarding — clearer first-run prompts.
+- CLI plan approval buttons actually show up now.
+- CLI background tasks and Codex turns no longer hang.
 
-This is the biggest update since launch — a redesigned session creation experience, Git worktree management, expanded agent support.
+# March 19 — New session screen, git worktrees, more agents
 
-- New session composer screen with machine selection, worktree picker, draft persistence, and offline machine visibility.
-- Git worktree management — list, create, and select worktrees from the app. Worktrees auto-cleanup on session delete.
-- Automatic plan mode switching when your agent enters planning mode.
-- OpenClaw added as a selectable AI agent alongside Claude Code and Codex.
-- Session quick actions for faster interaction with active sessions.
-- Session resume support — pick up where you left off.
-- Delete sessions directly from the session info screen.
-- Renamed "bypass" permission mode to "yolo" with updated styling.
-- Improved markdown rendering and message formatting.
-- Improved message sync reliability with edge case fixes.
-- Various UI polish: send spinner, hidden internal tool calls, improved spacing.
+Completely new way to start sessions, plus worktree support and more agents.
 
-## Version 5 - 2025-12-22
+- New session composer — pick machine, worktree, draft persists.
+- Git worktree management from the app. Auto-cleanup on delete.
+- Auto plan mode when your agent enters planning.
+- OpenClaw as a selectable agent.
+- Session quick actions, resume, delete from info screen.
+- "Bypass" renamed to "yolo".
 
-This release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.
+# December 22 — Agent updates, voice changes, tables
 
-- We are working on adding Gemini support using ACP and hopefully fixing codex stability issues using the same approach soon! Stay tuned.
-- Removed model configurations from agents. We were not able to keep up with the models so for now we are removing the configuration from the mobile app. You can still configure it through your CLIs, happy will simply use defaults.
-- Elevenlabs ... is epxensive. Voice conversations will soon require a subscription after 3 free trials - we'll soon allow connecting your own ElevenLabs agent if you want to manage your own spendings.
-- Improved markdown table rendering in chat - no more ASCII pipes `|--|`, actual formatted tables (layout still needs work, but much better!)
+Agent config changes and voice pricing heads-up.
 
-## Version 4 - 2025-09-12
+- Gemini support coming via ACP.
+- Model config removed from app — use CLI defaults.
+- Voice going subscription after 3 free trials.
+- Markdown tables render properly now.
 
-This release revolutionizes remote development with Codex integration and Daemon Mode, enabling instant AI assistance from anywhere. Start coding sessions with a single tap while maintaining complete control over your development environment.
+# September 12 — Codex, daemon mode, one-tap launch
 
-- Introduced Codex support for advanced AI-powered code completion and generation capabilities.
-- Implemented Daemon Mode as the new default, enabling instant remote session initiation without manual CLI startup.
-- Added one-click session launch from mobile devices, automatically connecting to your development machine.
-- Added ability to connect anthropic and gpt accounts to account
+Sessions start instantly now. No more manual CLI startup.
 
-## Version 3 - 2025-08-29
+- Codex support for code completion and generation.
+- Daemon mode — sessions start instantly without manual CLI startup.
+- One-tap launch from mobile.
+- Connect Anthropic and GPT accounts.
 
-This update introduces seamless GitHub integration, bringing your developer identity directly into Happy while maintaining our commitment to privacy and security.
+# August 29 — GitHub integration
 
-- Added GitHub account connection through secure OAuth authentication flow
-- Integrated profile synchronization displaying your GitHub avatar, name, and bio
-- Implemented encrypted token storage on our backend for additional security protection
-- Enhanced settings interface with personalized profile display when connected
-- Added one-tap GitHub disconnect functionality with confirmation protection
-- Improved account management with clear connection status indicators
+Your GitHub identity in Happy.
 
-## Version 2 - 2025-06-26
+- Connect your GitHub account via OAuth.
+- Avatar, name, and bio sync to the app.
+- Encrypted token storage.
 
-This update focuses on seamless device connectivity, visual refinements, and intelligent voice interactions for an enhanced user experience.
+# June 26 — QR login, dark mode, voice
 
-- Added QR code authentication for instant and secure device linking across platforms
-- Introduced comprehensive dark theme with automatic system preference detection
-- Improved voice assistant performance with faster response times and reduced latency
-- Added visual indicators for modified files directly in the session list
-- Implemented preferred language selection for voice assistant supporting 15+ languages
+Link devices instantly, look good doing it.
 
-## Version 1 - 2025-05-12
+- QR code auth for instant device linking.
+- Dark theme with system preference detection.
+- Faster voice responses.
+- Modified file indicators in session list.
+- 15+ languages for voice.
 
-Welcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.
+# May 12 — Hello world
 
-- Implemented end-to-end encrypted session management ensuring complete privacy
-- Integrated intelligent voice assistant with natural conversation capabilities
-- Added experimental file manager with syntax highlighting and tree navigation
-- Built seamless real-time synchronization across all your devices
-- Established native support for iOS, Android, and responsive web interfaces
+First release. Everything is new.
+
+- E2E encrypted sessions.
+- Voice assistant.
+- File manager with syntax highlighting.
+- Real-time sync across devices.

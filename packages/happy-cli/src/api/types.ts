@@ -218,65 +218,51 @@ export const CreateSessionResponseSchema = z.object({
 
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>
 
-// [LAW:one-source-of-truth] Mirror of @slopus/happy-wire's UserMessageSchema. The CLI
-// duplicates the wire schema today; both must stay in sync. Anthropic SDK ContentBlockParam
-// shape is used directly so claudeRemote can pass content through without translation.
-export const TextBlockSchema = z.object({
-  type: z.literal('text'),
-  text: z.string()
-})
-export type TextBlock = z.infer<typeof TextBlockSchema>
-
-export const ImageBlockSchema = z.object({
-  type: z.literal('image'),
-  source: z.object({
-    type: z.literal('base64'),
-    media_type: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
-    data: z.string()
-  })
-})
-export type ImageBlock = z.infer<typeof ImageBlockSchema>
-
-export const ContentBlockSchema = z.discriminatedUnion('type', [
-  TextBlockSchema,
-  ImageBlockSchema
-])
-export type ContentBlock = z.infer<typeof ContentBlockSchema>
-
 export const UserMessageSchema = z.object({
   role: z.literal('user'),
-  content: z.union([
-    z.object({
-      type: z.literal('text'),
-      text: z.string()
-    }),
-    z.array(ContentBlockSchema)
-  ]),
+  content: z.object({
+    type: z.literal('text'),
+    text: z.string()
+  }),
   localKey: z.string().optional(), // Mobile messages include this
   meta: MessageMetaSchema.optional()
 })
 
 export type UserMessage = z.infer<typeof UserMessageSchema>
 
-// [LAW:dataflow-not-control-flow] Two helpers, one for each downstream need: parsers and
-// loggers want a flat string; the SDK push site wants the full content forwarded as-is.
-// Centralizing them here means callers don't repeat the union check inline.
-export function extractMessageText(content: UserMessage['content']): string {
-  if (!Array.isArray(content)) {
-    return content.text
-  }
-  return content
-    .filter((b): b is TextBlock => b.type === 'text')
-    .map(b => b.text)
-    .join('\n')
-}
+/**
+ * File event message — sent by the app as a session envelope before the text message.
+ * Contains a ref pointing to the encrypted blob on the server.
+ */
+export const FileEventMessageSchema = z.object({
+  role: z.literal('session'),
+  content: z.object({
+    type: z.literal('session'),
+    data: z.object({
+      id: z.string(),
+      time: z.number(),
+      role: z.literal('user'),
+      ev: z.object({
+        t: z.literal('file'),
+        ref: z.string(),
+        name: z.string(),
+        size: z.number(),
+        mimeType: z.string().optional(),
+        image: z.object({
+          width: z.number(),
+          height: z.number(),
+          // Optional — native iOS picker has no Canvas to compute thumbhash.
+          // App-side schema relaxed this in the same commit; keeping CLI in
+          // sync so the file event isn't silently rejected by Zod and the
+          // attachment never reaches Claude.
+          thumbhash: z.string().optional(),
+        }).optional(),
+      }),
+    }),
+  }),
+})
 
-export function getMessageContent(content: UserMessage['content']): string | ContentBlock[] {
-  if (!Array.isArray(content)) {
-    return content.text
-  }
-  return content
-}
+export type FileEventMessage = z.infer<typeof FileEventMessageSchema>
 
 export const AgentMessageSchema = z.object({
   role: z.literal('agent'),
@@ -335,6 +321,9 @@ export type Metadata = {
   flavor?: string
   sandbox?: SandboxConfig | null
   dangerouslySkipPermissions?: boolean | null
+  /** Lineage for sessions created via the fork / duplicate flow. */
+  parentSessionId?: string
+  forkedFromMessageId?: string
 };
 
 export type AgentState = {

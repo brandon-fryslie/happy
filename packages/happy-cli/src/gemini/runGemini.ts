@@ -19,7 +19,7 @@ import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
-import { MessageQueue2, flattenQueueMessageToText } from '@/utils/MessageQueue2';
+import { MessageQueue2 } from "@/utils/MessageQueue2";
 import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
@@ -39,7 +39,6 @@ import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
 import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
 import type { GeminiMode, CodexMessagePayload } from '@/gemini/types';
 import type { PermissionMode } from '@/api/types';
-import { extractMessageText } from '@/api/types';
 import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL, CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import {
   readGeminiLocalConfig,
@@ -269,7 +268,7 @@ export async function runGemini(opts: {
 
     // Build the full prompt with appendSystemPrompt if provided
     // Only include system prompt for the first message to avoid forcing tool usage on every message
-    const originalUserMessage = extractMessageText(message.content);
+    const originalUserMessage = message.content.text;
     let fullPrompt = originalUserMessage;
     if (isFirstMessage && message.meta?.appendSystemPrompt) {
       // Prepend system prompt to user message only for first message
@@ -918,7 +917,7 @@ export async function runGemini(opts: {
         }
         // Gemini is text-only here; flatten image blocks (would-be-Gemini-image support is a
         // separate ticket). String-only batches pass through unchanged.
-        const flatMessage = flattenQueueMessageToText(batch.message);
+        const flatMessage = batch.message;
         logger.debug(`[gemini] Main loop: received message from queue (length: ${flatMessage.length})`);
         message = { ...batch, message: flatMessage };
       }

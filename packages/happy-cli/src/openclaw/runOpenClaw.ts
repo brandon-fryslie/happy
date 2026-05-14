@@ -14,12 +14,11 @@ import os from 'node:os';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
-import { extractMessageText } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { AcpSessionManager } from '@/agent/acp/AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
-import { MessageQueue2, flattenQueueMessageToText } from '@/utils/MessageQueue2';
+import { MessageQueue2 } from "@/utils/MessageQueue2";
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
@@ -270,7 +269,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
   backend.onMessage(onBackendMessage);
 
   session.onUserMessage((message) => {
-    const text = extractMessageText(message.content);
+    const text = message.content.text;
     if (!text) return;
     messageQueue.push(text, {});
   });
@@ -323,7 +322,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
         break;
       }
 
-      const promptText = flattenQueueMessageToText(batch.message);
+      const promptText = batch.message;
       log(`Incoming prompt: ${promptText.slice(0, 200)}`);
       inTurn = true;
       sendEnvelopes(sessionManager.startTurn());

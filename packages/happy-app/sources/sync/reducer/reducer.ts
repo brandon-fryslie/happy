@@ -128,6 +128,7 @@ type ReducerMessage = {
     tool: ToolCall | null;
     images?: { mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'; previewUri: string }[];
     meta?: MessageMeta;
+    claudeUuid?: string;
 }
 
 type StoredPermission = {
@@ -683,6 +684,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 event: null,
                 images: userImages,
                 meta: msg.meta,
+                claudeUuid: msg.claudeUuid,
             });
 
             // Track both localId and messageId
@@ -1184,6 +1186,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             text: reducerMsg.text,
             ...(reducerMsg.images && reducerMsg.images.length > 0 && { images: reducerMsg.images }),
             ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
+            ...(reducerMsg.claudeUuid && { claudeUuid: reducerMsg.claudeUuid }),
             meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {

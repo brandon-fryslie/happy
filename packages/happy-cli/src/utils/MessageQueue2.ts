@@ -1,56 +1,14 @@
 import { logger } from "@/ui/logger";
-import type { ContentBlock } from "@/api/types";
 
-// [LAW:one-type-per-behavior] A queue message is either plain text or a content-block array
-// (text + image). Same downstream behavior — the Claude SDK accepts either shape — so we
-// keep one queue, not two.
-export type QueueMessage = string | ContentBlock[];
-
-/**
- * Flatten a QueueMessage to its text representation. Text-only agents (gemini/codex/acp/
- * openclaw) call this when forwarding to downstream sinks that take a string; image blocks
- * are dropped — non-Claude agents shouldn't see images today, and the safe degradation is
- * to ignore them rather than fail.
- */
-export function flattenQueueMessageToText(message: QueueMessage): string {
-    if (typeof message === 'string') return message;
-    return message
-        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-        .map(b => b.text)
-        .join('\n');
-}
-
-/**
- * Merge a same-mode batch into a single message. All-text batches stay strings (legacy
- * behavior, joined with newlines). Any item with a content array promotes the whole batch
- * to a content array so image blocks survive — strings become text blocks, arrays splice in.
- */
-export function mergeQueueMessages(messages: QueueMessage[]): QueueMessage {
-    if (messages.length === 1) {
-        return messages[0];
-    }
-    const anyArray = messages.some(m => Array.isArray(m));
-    if (!anyArray) {
-        return (messages as string[]).join('\n');
-    }
-    const blocks: ContentBlock[] = [];
-    for (const m of messages) {
-        if (typeof m === 'string') {
-            if (m.length > 0) {
-                blocks.push({ type: 'text', text: m });
-            }
-        } else {
-            blocks.push(...m);
-        }
-    }
-    return blocks;
-}
+export type PendingAttachment = { data: Uint8Array; mimeType: string; name: string };
 
 interface QueueItem<T> {
-    message: QueueMessage;
+    message: string;
     mode: T;
     modeHash: string;
     isolate?: boolean; // If true, this message must be processed alone
+    /** Decoded image attachments owned by *this* message (per-message ownership). */
+    attachments?: PendingAttachment[];
 }
 
 /**
@@ -61,12 +19,12 @@ export class MessageQueue2<T> {
     public queue: QueueItem<T>[] = []; // Made public for testing
     private waiter: ((hasMessages: boolean) => void) | null = null;
     private closed = false;
-    private onMessageHandler: ((message: QueueMessage, mode: T) => void) | null = null;
+    private onMessageHandler: ((message: string, mode: T) => void) | null = null;
     modeHasher: (mode: T) => string;
 
     constructor(
         modeHasher: (mode: T) => string,
-        onMessageHandler: ((message: QueueMessage, mode: T) => void) | null = null
+        onMessageHandler: ((message: string, mode: T) => void) | null = null
     ) {
         this.modeHasher = modeHasher;
         this.onMessageHandler = onMessageHandler;
@@ -76,14 +34,15 @@ export class MessageQueue2<T> {
     /**
      * Set a handler that will be called when a message arrives
      */
-    setOnMessage(handler: ((message: QueueMessage, mode: T) => void) | null): void {
+    setOnMessage(handler: ((message: string, mode: T) => void) | null): void {
         this.onMessageHandler = handler;
     }
 
     /**
-     * Push a message to the queue with a mode.
+     * Push a message to the queue with a mode and an optional list of
+     * attachments that travel with this message.
      */
-    push(message: QueueMessage, mode: T): void {
+    push(message: string, mode: T, attachments?: PendingAttachment[]): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -95,7 +54,8 @@ export class MessageQueue2<T> {
             message,
             mode,
             modeHash,
-            isolate: false
+            isolate: false,
+            attachments,
         });
 
         // Trigger message handler if set
@@ -118,7 +78,7 @@ export class MessageQueue2<T> {
      * Push a message immediately without batching delay.
      * Does not clear the queue or enforce isolation.
      */
-    pushImmediate(message: QueueMessage, mode: T): void {
+    pushImmediate(message: string, mode: T): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -154,7 +114,7 @@ export class MessageQueue2<T> {
      * Clears any pending messages and ensures this message is never batched with others.
      * Used for special commands that require dedicated processing.
      */
-    pushIsolateAndClear(message: QueueMessage, mode: T): void {
+    pushIsolateAndClear(message: string, mode: T, attachments?: PendingAttachment[]): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -169,7 +129,8 @@ export class MessageQueue2<T> {
             message,
             mode,
             modeHash,
-            isolate: true
+            isolate: true,
+            attachments,
         });
 
         // Trigger message handler if set
@@ -191,7 +152,7 @@ export class MessageQueue2<T> {
     /**
      * Push a message to the beginning of the queue with a mode.
      */
-    unshift(message: QueueMessage, mode: T): void {
+    unshift(message: string, mode: T): void {
         if (this.closed) {
             throw new Error('Cannot unshift to closed queue');
         }
@@ -264,13 +225,10 @@ export class MessageQueue2<T> {
     }
 
     /**
-     * Wait for messages and return all messages with the same mode merged together.
-     * Returns { message: QueueMessage, mode: T } or null if aborted/closed.
-     * If every batched message is plain text, the merged message is a string (legacy shape).
-     * If any item carries a content array (e.g. image blocks), the merged message is a
-     * unified ContentBlock[] so image content survives merging.
+     * Wait for messages and return all messages with the same mode as a single string
+     * Returns { message: string, mode: T } or null if aborted/closed
      */
-    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: QueueMessage, mode: T, isolate: boolean, hash: string } | null> {
+    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, attachments?: PendingAttachment[] } | null> {
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
             return this.collectBatch();
@@ -294,13 +252,14 @@ export class MessageQueue2<T> {
     /**
      * Collect a batch of messages with the same mode, respecting isolation requirements
      */
-    private collectBatch(): { message: QueueMessage, mode: T, hash: string, isolate: boolean } | null {
+    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, attachments?: PendingAttachment[] } | null {
         if (this.queue.length === 0) {
             return null;
         }
 
         const firstItem = this.queue[0];
-        const sameModeMessages: QueueMessage[] = [];
+        const sameModeMessages: string[] = [];
+        const collectedAttachments: PendingAttachment[] = [];
         let mode = firstItem.mode;
         let isolate = firstItem.isolate ?? false;
         const targetModeHash = firstItem.modeHash;
@@ -309,6 +268,7 @@ export class MessageQueue2<T> {
         if (firstItem.isolate) {
             const item = this.queue.shift()!;
             sameModeMessages.push(item.message);
+            if (item.attachments) collectedAttachments.push(...item.attachments);
             logger.debug(`[MessageQueue2] Collected isolated message with mode hash: ${targetModeHash}`);
         } else {
             // Collect all messages with the same mode until we hit an isolated message
@@ -317,17 +277,20 @@ export class MessageQueue2<T> {
                 !this.queue[0].isolate) {
                 const item = this.queue.shift()!;
                 sameModeMessages.push(item.message);
+                if (item.attachments) collectedAttachments.push(...item.attachments);
             }
             logger.debug(`[MessageQueue2] Collected batch of ${sameModeMessages.length} messages with mode hash: ${targetModeHash}`);
         }
 
-        const combinedMessage = mergeQueueMessages(sameModeMessages);
+        // Join all messages with newlines
+        const combinedMessage = sameModeMessages.join('\n');
 
         return {
             message: combinedMessage,
             mode,
             hash: targetModeHash,
-            isolate
+            isolate,
+            attachments: collectedAttachments.length > 0 ? collectedAttachments : undefined,
         };
     }
 

@@ -1,5 +1,6 @@
 import { EnhancedMode } from "./loop";
 import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import type { MessageParam } from '@anthropic-ai/sdk/resources'
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
@@ -11,17 +12,6 @@ import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
-import type { ContentBlock } from "@/api/types";
-
-// Special commands like /clear are text-only; flatten content blocks down to their text
-// portion for parser consumption while keeping the original blocks for the SDK push.
-function flattenToText(message: string | ContentBlock[]): string {
-    if (typeof message === 'string') return message;
-    return message
-        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-        .map(b => b.text)
-        .join('\n');
-}
 
 export async function claudeRemote(opts: {
 
@@ -42,7 +32,7 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: string | ContentBlock[], mode: EnhancedMode } | null>,
+    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
     onReady: () => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -100,8 +90,11 @@ export async function claudeRemote(opts: {
         return;
     }
 
-    // Handle special commands
-    const specialCommand = parseSpecialCommand(flattenToText(initial.message));
+    // Handle special commands (extract text for parsing when content is a block array)
+    const initialText = typeof initial.message === 'string'
+        ? initial.message
+        : (initial.message.find((b) => b.type === 'text') as { type: 'text'; text: string } | undefined)?.text ?? '';
+    const specialCommand = parseSpecialCommand(initialText);
 
     // Handle /clear command
     if (specialCommand.type === 'clear') {
@@ -137,6 +130,7 @@ export async function claudeRemote(opts: {
         appendSystemPrompt: initial.mode.appendSystemPrompt ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: initial.mode.disallowedTools,
+        effort: initial.mode.effort,
         canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; toolUseID: string }) => opts.canCallTool(toolName, input, mode, options),
         abort: opts.signal,
         settingsPath: opts.hookSettingsPath,

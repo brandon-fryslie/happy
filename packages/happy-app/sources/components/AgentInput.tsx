@@ -2,8 +2,11 @@ import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
 import { Image } from 'expo-image';
+import { AgentInputAttachmentStrip } from './AgentInputAttachmentStrip';
+import type { AttachmentPreview } from '@/sync/attachmentTypes';
+import { generateThumbhash } from '@/utils/thumbhash';
 import { layout } from './layout';
-import { MultiTextInput, KeyPressEvent, PastedImage } from './MultiTextInput';
+import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
 import { EffortLevel } from './modelModeOptions';
@@ -77,17 +80,12 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
-    /**
-     * Image attachments composed alongside the in-progress message. The chip strip is
-     * rendered above the text input; an X on each chip removes it. Pasted images are
-     * appended via onPasteImages.
-     */
-    attachments?: PastedImage[];
-    onPasteImages?: (images: PastedImage[]) => void;
-    onRemoveAttachment?: (index: number) => void;
-    /** Show an attach button — only relevant on Android where TextInput.onPaste is text-only. */
-    showAttachButton?: boolean;
-    onAttachPress?: () => void;
+    zenMode?: boolean;
+    /** Image attachments waiting to be sent (expImageUpload feature). */
+    selectedImages?: AttachmentPreview[];
+    onPickImages?: () => void;
+    onRemoveImage?: (id: string) => void;
+    onAddImages?: (images: AttachmentPreview[]) => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -319,11 +317,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const isSendBlocked = props.blockSend ?? false;
 
     const hasText = props.value.trim().length > 0;
-    const hasAttachments = (props.attachments?.length ?? 0) > 0;
-    const hasContent = hasText || hasAttachments;
+    const hasImages = (props.selectedImages?.length ?? 0) > 0;
     const canPressSendButton = !props.isSending
         && !props.isSendDisabled
-        && (isSendBlocked ? hasContent : (hasContent || !!props.onMicPress));
+        && (isSendBlocked ? (hasText || hasImages) : (hasText || hasImages || !!props.onMicPress));
 
     // Check if this is a Codex, Gemini, or OpenClaw session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
@@ -379,6 +376,40 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Forward ref to the MultiTextInput
     React.useImperativeHandle(ref, () => inputRef.current!, []);
+
+    // Web paste/drag — intercept image pastes and drops for the attachment feature
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !props.onAddImages) return;
+
+        const handlePaste = async (e: ClipboardEvent) => {
+            // Only handle pastes targeted at a focused text-editable element.
+            // The listener is attached to document, so without this guard a
+            // paste in the URL bar, another modal, or any focused-elsewhere
+            // input would steal images intended for somewhere else.
+            const active = document.activeElement;
+            const isEditableTarget = active instanceof HTMLInputElement
+                || active instanceof HTMLTextAreaElement
+                || (active instanceof HTMLElement && active.isContentEditable);
+            if (!isEditableTarget) return;
+
+            const { getImagesFromClipboard, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
+            const files = getImagesFromClipboard(e);
+            if (!files.length) return;
+            e.preventDefault();
+            const previews = (await Promise.all(
+                files.map((f) => fileToAttachmentPreview(f, generateThumbhash))
+            )).filter(Boolean) as Omit<AttachmentPreview, 'id'>[];
+            if (previews.length) {
+                props.onAddImages!(previews.map((p) => ({
+                    ...p,
+                    id: `paste_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+                })));
+            }
+        };
+
+        document.addEventListener('paste', handlePaste as any);
+        return () => document.removeEventListener('paste', handlePaste as any);
+    }, [props.onAddImages]);
 
     // Autocomplete state - track text and selection together
     const [inputState, setInputState] = React.useState<TextInputState>({
@@ -439,21 +470,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
-    const [settingsMaxHeight, setSettingsMaxHeight] = React.useState(400);
-    const innerContainerRef = React.useRef<View>(null);
 
-    // Handle settings button press — measure available space above the input
+    // Handle settings button press
     const handleSettingsPress = React.useCallback(() => {
         hapticsLight();
-        if (!showSettings && innerContainerRef.current) {
-            innerContainerRef.current.measureInWindow((_x, y) => {
-                // Available space is from top of screen to top of the input container, minus margin
-                const available = y - 16;
-                setSettingsMaxHeight(Math.max(200, Math.min(400, available)));
-            });
-        }
         setShowSettings(prev => !prev);
-    }, [showSettings]);
+    }, []);
 
     // Handle settings selection
     const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
@@ -488,10 +510,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [props.onAbort]);
 
     const handleBlockedSendAttempt = React.useCallback(() => {
-        if (!isSendBlocked || !hasContent || props.isSending) return;
+        if (!isSendBlocked || !hasText || props.isSending) return;
         hapticsError();
         sendBlockShakerRef.current?.shake();
-    }, [hasContent, isSendBlocked, props.isSending]);
+    }, [hasText, isSendBlocked, props.isSending]);
 
     const handleSendPress = React.useCallback(() => {
         if (isSendBlocked) {
@@ -501,12 +523,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (props.isSendDisabled || props.isSending) return;
 
         hapticsLight();
-        if (hasContent) {
+        if (hasText || hasImages) {
             props.onSend();
         } else {
             props.onMicPress?.();
         }
-    }, [handleBlockedSendAttempt, hasContent, isSendBlocked, props]);
+    }, [handleBlockedSendAttempt, hasText, hasImages, isSendBlocked, props]);
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -581,13 +603,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             styles.container,
             { paddingHorizontal: screenWidth > 700 ? 12 : 8 }
         ]}>
-            <View
-                ref={innerContainerRef}
-                style={[
-                    styles.innerContainer,
-                    { maxWidth: layout.maxWidth }
-                ]}
-            >
+            <View style={[
+                styles.innerContainer,
+                { maxWidth: layout.maxWidth }
+            ]}>
                 {/* Autocomplete suggestions overlay */}
                 {suggestions.length > 0 && (
                     <View style={[
@@ -616,7 +635,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             styles.settingsOverlay,
                             { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
                         ]}>
-                            <FloatingOverlay maxHeight={settingsMaxHeight} keyboardShouldPersistTaps="always">
+                            <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
@@ -864,7 +883,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || (displayPermissionMode && permissionModeKey !== 'default')) && (
+                {(props.connectionStatus || contextWarning || (displayPermissionMode && permissionModeKey !== 'default' && !props.zenMode)) && (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
@@ -971,7 +990,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             )}
                         </View>
                         {/* Permission badge — only shown when non-default */}
-                        {displayPermissionMode && permissionModeKey !== 'default' && (() => {
+                        {displayPermissionMode && permissionModeKey !== 'default' && !props.zenMode && (() => {
                             const permColor = isSandboxedYoloMode ? '#4169E1' :
                                 permissionModeKey === 'acceptEdits' ? theme.colors.permission.acceptEdits :
                                     permissionModeKey === 'bypassPermissions' ? theme.colors.permission.bypass :
@@ -1083,51 +1102,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 {/* Box 2: Action Area (Input + Send) */}
                 <Shaker ref={sendBlockShakerRef}>
                 <View style={styles.unifiedPanel}>
-                    {/* Image attachments strip — rendered above the text input when any */}
-                    {props.attachments && props.attachments.length > 0 && (
-                        <View style={{
-                            flexDirection: 'row',
-                            flexWrap: 'wrap',
-                            gap: 8,
-                            paddingHorizontal: 8,
-                            paddingTop: 8,
-                            paddingBottom: 4,
-                        }}>
-                            {props.attachments.map((att, i) => (
-                                <View key={`att-${i}`} style={{ position: 'relative' }}>
-                                    <Image
-                                        source={{ uri: att.previewUri }}
-                                        style={{ width: 56, height: 56, borderRadius: 8, backgroundColor: theme.colors.surfacePressed }}
-                                        contentFit="cover"
-                                    />
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onRemoveAttachment?.(i);
-                                        }}
-                                        hitSlop={6}
-                                        style={({ pressed }) => ({
-                                            position: 'absolute',
-                                            top: -6,
-                                            right: -6,
-                                            width: 20,
-                                            height: 20,
-                                            borderRadius: 10,
-                                            backgroundColor: theme.colors.surfaceHigh,
-                                            borderWidth: 1,
-                                            borderColor: theme.colors.divider,
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            opacity: pressed ? 0.6 : 1,
-                                        })}
-                                    >
-                                        <Ionicons name="close" size={12} color={theme.colors.text} />
-                                    </Pressable>
-                                </View>
-                            ))}
-                        </View>
+                    {/* Attachment preview strip */}
+                    {props.selectedImages && props.selectedImages.length > 0 && (
+                        <AgentInputAttachmentStrip
+                            images={props.selectedImages}
+                            onRemove={props.onRemoveImage ?? (() => {})}
+                        />
                     )}
-
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <MultiTextInput
@@ -1139,7 +1120,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             placeholder={props.placeholder}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
-                            onPasteImages={props.onPasteImages}
                             maxHeight={120}
                         />
                     </View>
@@ -1149,7 +1129,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
                             {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <View style={styles.actionButtonsLeft}>
+                                {props.zenMode && <View style={{ flex: 1 }} />}
+                                {!props.zenMode && <View style={styles.actionButtonsLeft}>
 
                                 {/* Settings button */}
                                 {props.onPermissionModeChange && (
@@ -1248,14 +1229,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {/* Git Status Badge */}
                                 <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
 
-                                {/* Attach image button — Android needs this since TextInput.onPaste is text-only.
-                                    iOS+Web get native paste, so the button is supplemental there. */}
-                                {props.showAttachButton && props.onAttachPress && (
+                                {/* Image picker button (expImageUpload) */}
+                                {props.onPickImages && (
                                     <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onAttachPress?.();
-                                        }}
+                                        onPress={props.onPickImages}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                         style={(p) => ({
                                             flexDirection: 'row',
@@ -1267,23 +1244,24 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             height: 32,
                                             opacity: p.pressed ? 0.7 : 1,
                                         })}
-                                        accessibilityLabel={t('agentInput.attachImage')}
                                     >
                                         <Ionicons
                                             name="image-outline"
                                             size={16}
-                                            color={theme.colors.button.secondary.tint}
+                                            color={(props.selectedImages?.length ?? 0) > 0
+                                                ? theme.colors.radio.active
+                                                : theme.colors.button.secondary.tint}
                                         />
                                     </Pressable>
                                 )}
-                                </View>
+                                </View>}
 
                                 {/* Send/Voice button - aligned with first row */}
                                 <View
                                     style={[
                                         styles.sendButton,
                                         isSendBlocked ? styles.sendButtonLocked :
-                                        (hasContent || props.isSending || (props.onMicPress && !props.isMicActive))
+                                        (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
                                     ]}
@@ -1311,7 +1289,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 size={15}
                                                 color={theme.colors.textSecondary}
                                             />
-                                        ) : hasContent ? (
+                                        ) : hasText ? (
                                             <Octicons
                                                 name="arrow-up"
                                                 size={16}

@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
-import { extractMessageText } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
@@ -9,7 +8,7 @@ import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
-import { MessageQueue2, flattenQueueMessageToText } from '@/utils/MessageQueue2';
+import { MessageQueue2 } from "@/utils/MessageQueue2";
 import { hashObject } from '@/utils/deterministicJson';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
@@ -828,7 +827,7 @@ export async function runAcp(opts: {
   backend.onMessage(onBackendMessage);
 
   session.onUserMessage((message) => {
-    const text = extractMessageText(message.content);
+    const text = message.content.text;
     if (!text) {
       return;
     }
@@ -909,7 +908,7 @@ export async function runAcp(opts: {
       }
 
       // ACP backends here are text-only; image blocks are dropped at the boundary.
-      const promptText = flattenQueueMessageToText(batch.message);
+      const promptText = batch.message;
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(promptText, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());

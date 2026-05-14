@@ -76,7 +76,7 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
-        { key: 'opus', name: 'opus 4.6', description: null },
+        { key: 'opus', name: 'opus 4.7', description: null },
         { key: 'sonnet', name: 'sonnet 4.6', description: null },
         { key: 'haiku', name: 'haiku 4.5', description: null },
     ];
@@ -85,6 +85,7 @@ export function getClaudeModelModes(): ModelMode[] {
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+        { key: 'gpt-5.5', name: 'gpt-5.5', description: null },
         { key: 'gpt-5.4', name: 'gpt-5.4', description: null },
         { key: 'gpt-5.3-codex', name: 'gpt-5.3-codex', description: null },
         { key: 'gpt-5.2-codex', name: 'gpt-5.2-codex', description: null },
@@ -235,9 +236,12 @@ export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
 }
 
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
-export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string): EffortLevel[] {
+export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string): EffortLevel[] {
+    // Claude and Codex expose effort/thought levels regardless of which
+    // specific model is picked — the same low/medium/high/max scale applies
+    // to the whole flavor (mirrors how Codex already worked, which the user
+    // asked Claude to match).
     if (flavor === 'claude') {
-        if (modelKey === 'default') return [];
         return getClaudeEffortLevels();
     }
     if (flavor === 'codex') {
