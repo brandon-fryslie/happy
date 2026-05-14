@@ -86,7 +86,7 @@ for (const t of targets) {
         continue;
     }
     const original = fs.readFileSync(abs, 'utf8');
-    if (original.includes(t.replacement)) {
+    if (original.includes(t.replacement) || original.includes('logbox_copy_button_')) {
         alreadyPatched++;
         continue;
     }
