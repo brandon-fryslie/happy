@@ -1,10 +1,16 @@
 name: Build and Deploy Happy Server
 
-# Builds the happy-server Docker image and deploys to the homelab.
+# Builds the happy images and deploys to the homelab.
 #
-# - Push to main: builds :latest + :<sha>, deploys to prod (happy.sanctuary.gdn)
-# - Pull request: builds :test + :pr-<number>, deploys to test (happy-test.sanctuary.gdn)
-# - Manual dispatch: builds from specified ref, deploys to chosen target
+# - Push to main (prod): happy-server is built at a YYYY.MM.DD.N tag and that tag
+#   is *declared* via the update-service-version action — which opens a PR against
+#   home-infra's service-versions contract that Atlantis plans and applies.
+#   happy-server never deploys via `nomad job run` from CI. webapp/expo still
+#   deploy directly during the migration window (home-ci-workflows-2g4.6 / .8).
+# - Pull request (test): builds :test + :pr-<number> and deploys the -test job
+#   variants directly via `nomad job run`. Test variants are deliberately NOT
+#   version-managed declared state, so they stay on the imperative path.
+# - Manual dispatch: target=prod|test selects the path above.
 #
 # Runs on the self-hosted Gitea act-runner which has docker.sock mounted,
 # so builds hit the runner VM's daemon directly (trusts 192.168.7.208:5000
@@ -38,6 +44,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Canonical YYYY.MM.DD.N tag for the version-managed prod server image.
+      # Cheap to compute unconditionally; only consumed on the prod path.
+      - name: Generate image tag
+        id: tag
+        uses: https://gitea.sanctuary.gdn/brandon-fryslie/homelab-infra/.gitea/actions/gen-image-tag@master
+
       - name: Determine build target
         id: target
         run: |
@@ -48,24 +60,24 @@ jobs:
           if [ "${{ gitea.event_name }}" = "pull_request" ]; then
             echo "env=test" >> "$GITHUB_OUTPUT"
             echo "tag=test" >> "$GITHUB_OUTPUT"
+            echo "server_tag=test" >> "$GITHUB_OUTPUT"
             echo "extra_tag=pr-${{ gitea.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-            echo "server_job=happy-test" >> "$GITHUB_OUTPUT"
             echo "webapp_job=happy-webapp-test" >> "$GITHUB_OUTPUT"
             echo "expo_job=" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server-test.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           elif [ "${{ gitea.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.target }}" = "test" ]; then
             echo "env=test" >> "$GITHUB_OUTPUT"
             echo "tag=test" >> "$GITHUB_OUTPUT"
+            echo "server_tag=test" >> "$GITHUB_OUTPUT"
             echo "extra_tag=$SHA" >> "$GITHUB_OUTPUT"
-            echo "server_job=happy-test" >> "$GITHUB_OUTPUT"
             echo "webapp_job=happy-webapp-test" >> "$GITHUB_OUTPUT"
             echo "expo_job=" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server-test.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           else
             echo "env=prod" >> "$GITHUB_OUTPUT"
             echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "server_tag=${{ steps.tag.outputs.image-tag }}" >> "$GITHUB_OUTPUT"
             echo "extra_tag=$SHA" >> "$GITHUB_OUTPUT"
-            echo "server_job=happy" >> "$GITHUB_OUTPUT"
             echo "webapp_job=happy-webapp" >> "$GITHUB_OUTPUT"
             echo "expo_job=happy-expo" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server.sanctuary.gdn" >> "$GITHUB_OUTPUT"
@@ -73,13 +85,12 @@ jobs:
 
       - name: Build server image
         env:
-          SHA: ${{ steps.target.outputs.sha }}
-          TAG: ${{ steps.target.outputs.tag }}
+          SERVER_TAG: ${{ steps.target.outputs.server_tag }}
           EXTRA_TAG: ${{ steps.target.outputs.extra_tag }}
         run: |
           set -euo pipefail
           docker build \
-            --tag "$REGISTRY/$SERVER_IMAGE:$TAG" \
+            --tag "$REGISTRY/$SERVER_IMAGE:$SERVER_TAG" \
             --tag "$REGISTRY/$SERVER_IMAGE:$EXTRA_TAG" \
             .
 
@@ -112,16 +123,17 @@ jobs:
       - name: Push images
         env:
           TAG: ${{ steps.target.outputs.tag }}
+          SERVER_TAG: ${{ steps.target.outputs.server_tag }}
           EXTRA_TAG: ${{ steps.target.outputs.extra_tag }}
         run: |
           set -euo pipefail
-          docker push "$REGISTRY/$SERVER_IMAGE:$TAG"
+          docker push "$REGISTRY/$SERVER_IMAGE:$SERVER_TAG"
           docker push "$REGISTRY/$SERVER_IMAGE:$EXTRA_TAG"
           docker push "$REGISTRY/$WEBAPP_IMAGE:$TAG"
           docker push "$REGISTRY/$WEBAPP_IMAGE:$EXTRA_TAG"
           docker push "$REGISTRY/$EXPO_DEV_IMAGE:$TAG"
           docker push "$REGISTRY/$EXPO_DEV_IMAGE:$EXTRA_TAG"
-          echo "Pushed server, webapp, and expo-dev images (:$TAG and :$EXTRA_TAG)"
+          echo "Pushed server (:$SERVER_TAG), webapp + expo-dev (:$TAG), all + :$EXTRA_TAG"
 
       - name: Install nomad CLI
         run: |
@@ -136,18 +148,25 @@ jobs:
           set -euo pipefail
           git clone --depth 1 https://gitea.sanctuary.gdn/brandon-fryslie/homelab-infra.git /tmp/home-infra
 
-      - name: Deploy server
-        env:
-          SERVER_JOB: ${{ steps.target.outputs.server_job }}
-          ENV: ${{ steps.target.outputs.env }}
+      # Prod: declare the new happy-server tag in home-infra's service-versions
+      # contract. The action opens/refreshes a PR; Atlantis plans it and a merge
+      # rolls it out. [LAW:single-enforcer] CI only *declares* — Atlantis is the
+      # one and only thing that makes happy-server run.
+      - name: Declare happy-server deploy
+        if: ${{ steps.target.outputs.env == 'prod' }}
+        uses: https://gitea.sanctuary.gdn/brandon-fryslie/homelab-infra/.gitea/actions/update-service-version@master
+        with:
+          versions: '{"happy-server": "${{ steps.target.outputs.server_tag }}"}'
+          token: ${{ secrets.DEPLOY_GITEA_TOKEN }}
+
+      # Test: the -test variant is deliberately outside the version-managed
+      # contract, so it deploys imperatively.
+      - name: Deploy happy-server (test)
+        if: ${{ steps.target.outputs.env == 'test' }}
         run: |
           set -euo pipefail
-          JOB_FILE="/tmp/home-infra/jobs/happy-server.nomad.hcl"
-          if [ "$ENV" = "test" ]; then
-            JOB_FILE="/tmp/home-infra/jobs/happy-server-test.nomad.hcl"
-          fi
-          nomad job run "$JOB_FILE"
-          echo "Deployed $SERVER_JOB from $JOB_FILE"
+          nomad job run /tmp/home-infra/jobs/happy-server-test.nomad.hcl
+          echo "Deployed happy-server-test"
 
       - name: Deploy webapp
         env:
