@@ -2,12 +2,11 @@ name: Build and Deploy Happy Server
 
 # Builds the happy images and deploys to the homelab.
 #
-# - Push to main (prod): happy-server and happy-expo are each built at a
-#   YYYY.MM.DD.N tag and those tags are *declared* in one atomic PR via the
-#   update-service-version action — which Atlantis plans and applies against
-#   home-infra's service-versions contract. Neither deploys via `nomad job run`
-#   from CI. happy-webapp still deploys directly during the migration window
-#   (home-ci-workflows-2g4.8).
+# - Push to main (prod): happy-server, happy-expo, and happy-webapp are each
+#   built at one YYYY.MM.DD.N tag and those tags are *declared* in a single
+#   atomic PR via the update-service-version action — which Atlantis plans and
+#   applies against home-infra's service-versions contract. Nothing deploys via
+#   `nomad job run` from CI; Atlantis is the sole enforcer of what runs.
 # - Pull request (test): builds :test + :pr-<number> and deploys the -test job
 #   variants directly via `nomad job run`. Test variants are deliberately NOT
 #   version-managed declared state, so they stay on the imperative path.
@@ -45,12 +44,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Canonical YYYY.MM.DD.N tag for the version-managed prod server image.
+      # Canonical YYYY.MM.DD.N tag for the version-managed prod images.
       # Cheap to compute unconditionally; only consumed on the prod path.
       - name: Generate image tag
         id: tag
         uses: https://gitea.sanctuary.gdn/brandon-fryslie/homelab-infra/.gitea/actions/gen-image-tag@master
 
+      # server_tag is the one image tag for every prod image (server, expo,
+      # webapp) — the value declared into the contract. On the test path it is
+      # "test", which the -test job specs pull. There is no separate :latest
+      # axis: the prod jobs pull server_tag via image_tag, nothing pulls :latest.
       - name: Determine build target
         id: target
         run: |
@@ -60,24 +63,18 @@ jobs:
 
           if [ "${{ gitea.event_name }}" = "pull_request" ]; then
             echo "env=test" >> "$GITHUB_OUTPUT"
-            echo "tag=test" >> "$GITHUB_OUTPUT"
             echo "server_tag=test" >> "$GITHUB_OUTPUT"
             echo "extra_tag=pr-${{ gitea.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-            echo "webapp_job=happy-webapp-test" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server-test.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           elif [ "${{ gitea.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.target }}" = "test" ]; then
             echo "env=test" >> "$GITHUB_OUTPUT"
-            echo "tag=test" >> "$GITHUB_OUTPUT"
             echo "server_tag=test" >> "$GITHUB_OUTPUT"
             echo "extra_tag=$SHA" >> "$GITHUB_OUTPUT"
-            echo "webapp_job=happy-webapp-test" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server-test.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           else
             echo "env=prod" >> "$GITHUB_OUTPUT"
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
             echo "server_tag=${{ steps.tag.outputs.image-tag }}" >> "$GITHUB_OUTPUT"
             echo "extra_tag=$SHA" >> "$GITHUB_OUTPUT"
-            echo "webapp_job=happy-webapp" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           fi
 
@@ -94,7 +91,7 @@ jobs:
 
       - name: Build webapp image
         env:
-          TAG: ${{ steps.target.outputs.tag }}
+          SERVER_TAG: ${{ steps.target.outputs.server_tag }}
           EXTRA_TAG: ${{ steps.target.outputs.extra_tag }}
           SERVER_URL: ${{ steps.target.outputs.server_url }}
         run: |
@@ -102,7 +99,7 @@ jobs:
           docker build \
             --file Dockerfile.webapp \
             --build-arg EXPO_PUBLIC_HAPPY_SERVER_URL="$SERVER_URL" \
-            --tag "$REGISTRY/$WEBAPP_IMAGE:$TAG" \
+            --tag "$REGISTRY/$WEBAPP_IMAGE:$SERVER_TAG" \
             --tag "$REGISTRY/$WEBAPP_IMAGE:$EXTRA_TAG" \
             .
 
@@ -120,20 +117,20 @@ jobs:
 
       - name: Push images
         env:
-          TAG: ${{ steps.target.outputs.tag }}
           SERVER_TAG: ${{ steps.target.outputs.server_tag }}
           EXTRA_TAG: ${{ steps.target.outputs.extra_tag }}
         run: |
           set -euo pipefail
           docker push "$REGISTRY/$SERVER_IMAGE:$SERVER_TAG"
           docker push "$REGISTRY/$SERVER_IMAGE:$EXTRA_TAG"
-          docker push "$REGISTRY/$WEBAPP_IMAGE:$TAG"
+          docker push "$REGISTRY/$WEBAPP_IMAGE:$SERVER_TAG"
           docker push "$REGISTRY/$WEBAPP_IMAGE:$EXTRA_TAG"
           docker push "$REGISTRY/$EXPO_DEV_IMAGE:$SERVER_TAG"
           docker push "$REGISTRY/$EXPO_DEV_IMAGE:$EXTRA_TAG"
-          echo "Pushed server + expo-dev (:$SERVER_TAG), webapp (:$TAG), all + :$EXTRA_TAG"
+          echo "Pushed server, webapp, and expo-dev (:$SERVER_TAG and :$EXTRA_TAG)"
 
       - name: Install nomad CLI
+        if: ${{ steps.target.outputs.env == 'test' }}
         run: |
           set -euo pipefail
           curl -fsSL "https://releases.hashicorp.com/nomad/${NOMAD_VERSION}/nomad_${NOMAD_VERSION}_linux_amd64.zip" -o /tmp/nomad.zip
@@ -142,27 +139,29 @@ jobs:
           nomad version
 
       - name: Clone home-infra for job specs
+        if: ${{ steps.target.outputs.env == 'test' }}
         run: |
           set -euo pipefail
           git clone --depth 1 https://gitea.sanctuary.gdn/brandon-fryslie/homelab-infra.git /tmp/home-infra
 
-      # Prod: declare the new happy-server and happy-expo tags in home-infra's
-      # service-versions contract. Both keys go in one map so the action opens a
-      # single PR that updates them atomically — they roll in lockstep or not at
-      # all. Atlantis plans the PR and a merge rolls it out. [LAW:single-enforcer]
-      # CI only *declares* — Atlantis is the one and only thing that makes these
-      # services run.
+      # Prod: declare the new happy-server, happy-expo, and happy-webapp tags in
+      # home-infra's service-versions contract. All three keys go in one map so
+      # the action opens a single PR that updates them atomically — they roll in
+      # lockstep or not at all. Atlantis plans the PR and a merge rolls it out.
+      # [LAW:single-enforcer] CI only *declares*; Atlantis is the one and only
+      # thing that makes these services run.
       - name: Declare deploys
         if: ${{ steps.target.outputs.env == 'prod' }}
         uses: https://gitea.sanctuary.gdn/brandon-fryslie/homelab-infra/.gitea/actions/update-service-version@master
         with:
           versions: >-
             {"happy-server": "${{ steps.target.outputs.server_tag }}",
-             "happy-expo":   "${{ steps.target.outputs.server_tag }}"}
+             "happy-expo":   "${{ steps.target.outputs.server_tag }}",
+             "happy-webapp": "${{ steps.target.outputs.server_tag }}"}
           token: ${{ secrets.DEPLOY_GITEA_TOKEN }}
 
-      # Test: the -test variant is deliberately outside the version-managed
-      # contract, so it deploys imperatively.
+      # Test: the -test variants are deliberately outside the version-managed
+      # contract, so they deploy imperatively.
       - name: Deploy happy-server (test)
         if: ${{ steps.target.outputs.env == 'test' }}
         run: |
@@ -170,15 +169,9 @@ jobs:
           nomad job run /tmp/home-infra/jobs/happy-server-test.nomad.hcl
           echo "Deployed happy-server-test"
 
-      - name: Deploy webapp
-        env:
-          WEBAPP_JOB: ${{ steps.target.outputs.webapp_job }}
-          ENV: ${{ steps.target.outputs.env }}
+      - name: Deploy happy-webapp (test)
+        if: ${{ steps.target.outputs.env == 'test' }}
         run: |
           set -euo pipefail
-          JOB_FILE="/tmp/home-infra/jobs/happy-webapp.nomad.hcl"
-          if [ "$ENV" = "test" ]; then
-            JOB_FILE="/tmp/home-infra/jobs/happy-webapp-test.nomad.hcl"
-          fi
-          nomad job run "$JOB_FILE"
-          echo "Deployed $WEBAPP_JOB from $JOB_FILE"
+          nomad job run /tmp/home-infra/jobs/happy-webapp-test.nomad.hcl
+          echo "Deployed happy-webapp-test"
