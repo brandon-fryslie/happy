@@ -2,11 +2,12 @@ name: Build and Deploy Happy Server
 
 # Builds the happy images and deploys to the homelab.
 #
-# - Push to main (prod): happy-server is built at a YYYY.MM.DD.N tag and that tag
-#   is *declared* via the update-service-version action — which opens a PR against
-#   home-infra's service-versions contract that Atlantis plans and applies.
-#   happy-server never deploys via `nomad job run` from CI. webapp/expo still
-#   deploy directly during the migration window (home-ci-workflows-2g4.6 / .8).
+# - Push to main (prod): happy-server and happy-expo are each built at a
+#   YYYY.MM.DD.N tag and those tags are *declared* in one atomic PR via the
+#   update-service-version action — which Atlantis plans and applies against
+#   home-infra's service-versions contract. Neither deploys via `nomad job run`
+#   from CI. happy-webapp still deploys directly during the migration window
+#   (home-ci-workflows-2g4.8).
 # - Pull request (test): builds :test + :pr-<number> and deploys the -test job
 #   variants directly via `nomad job run`. Test variants are deliberately NOT
 #   version-managed declared state, so they stay on the imperative path.
@@ -63,7 +64,6 @@ jobs:
             echo "server_tag=test" >> "$GITHUB_OUTPUT"
             echo "extra_tag=pr-${{ gitea.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
             echo "webapp_job=happy-webapp-test" >> "$GITHUB_OUTPUT"
-            echo "expo_job=" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server-test.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           elif [ "${{ gitea.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.target }}" = "test" ]; then
             echo "env=test" >> "$GITHUB_OUTPUT"
@@ -71,7 +71,6 @@ jobs:
             echo "server_tag=test" >> "$GITHUB_OUTPUT"
             echo "extra_tag=$SHA" >> "$GITHUB_OUTPUT"
             echo "webapp_job=happy-webapp-test" >> "$GITHUB_OUTPUT"
-            echo "expo_job=" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server-test.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           else
             echo "env=prod" >> "$GITHUB_OUTPUT"
@@ -79,7 +78,6 @@ jobs:
             echo "server_tag=${{ steps.tag.outputs.image-tag }}" >> "$GITHUB_OUTPUT"
             echo "extra_tag=$SHA" >> "$GITHUB_OUTPUT"
             echo "webapp_job=happy-webapp" >> "$GITHUB_OUTPUT"
-            echo "expo_job=happy-expo" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           fi
 
@@ -110,13 +108,13 @@ jobs:
 
       - name: Build expo-dev image
         env:
-          TAG: ${{ steps.target.outputs.tag }}
+          SERVER_TAG: ${{ steps.target.outputs.server_tag }}
           EXTRA_TAG: ${{ steps.target.outputs.extra_tag }}
         run: |
           set -euo pipefail
           docker build \
             --file Dockerfile.expo-dev \
-            --tag "$REGISTRY/$EXPO_DEV_IMAGE:$TAG" \
+            --tag "$REGISTRY/$EXPO_DEV_IMAGE:$SERVER_TAG" \
             --tag "$REGISTRY/$EXPO_DEV_IMAGE:$EXTRA_TAG" \
             .
 
@@ -131,9 +129,9 @@ jobs:
           docker push "$REGISTRY/$SERVER_IMAGE:$EXTRA_TAG"
           docker push "$REGISTRY/$WEBAPP_IMAGE:$TAG"
           docker push "$REGISTRY/$WEBAPP_IMAGE:$EXTRA_TAG"
-          docker push "$REGISTRY/$EXPO_DEV_IMAGE:$TAG"
+          docker push "$REGISTRY/$EXPO_DEV_IMAGE:$SERVER_TAG"
           docker push "$REGISTRY/$EXPO_DEV_IMAGE:$EXTRA_TAG"
-          echo "Pushed server (:$SERVER_TAG), webapp + expo-dev (:$TAG), all + :$EXTRA_TAG"
+          echo "Pushed server + expo-dev (:$SERVER_TAG), webapp (:$TAG), all + :$EXTRA_TAG"
 
       - name: Install nomad CLI
         run: |
@@ -148,15 +146,19 @@ jobs:
           set -euo pipefail
           git clone --depth 1 https://gitea.sanctuary.gdn/brandon-fryslie/homelab-infra.git /tmp/home-infra
 
-      # Prod: declare the new happy-server tag in home-infra's service-versions
-      # contract. The action opens/refreshes a PR; Atlantis plans it and a merge
-      # rolls it out. [LAW:single-enforcer] CI only *declares* — Atlantis is the
-      # one and only thing that makes happy-server run.
-      - name: Declare happy-server deploy
+      # Prod: declare the new happy-server and happy-expo tags in home-infra's
+      # service-versions contract. Both keys go in one map so the action opens a
+      # single PR that updates them atomically — they roll in lockstep or not at
+      # all. Atlantis plans the PR and a merge rolls it out. [LAW:single-enforcer]
+      # CI only *declares* — Atlantis is the one and only thing that makes these
+      # services run.
+      - name: Declare deploys
         if: ${{ steps.target.outputs.env == 'prod' }}
         uses: https://gitea.sanctuary.gdn/brandon-fryslie/homelab-infra/.gitea/actions/update-service-version@master
         with:
-          versions: '{"happy-server": "${{ steps.target.outputs.server_tag }}"}'
+          versions: >-
+            {"happy-server": "${{ steps.target.outputs.server_tag }}",
+             "happy-expo":   "${{ steps.target.outputs.server_tag }}"}
           token: ${{ secrets.DEPLOY_GITEA_TOKEN }}
 
       # Test: the -test variant is deliberately outside the version-managed
@@ -180,12 +182,3 @@ jobs:
           fi
           nomad job run "$JOB_FILE"
           echo "Deployed $WEBAPP_JOB from $JOB_FILE"
-
-      - name: Deploy expo-dev
-        if: ${{ steps.target.outputs.expo_job != '' }}
-        env:
-          EXPO_JOB: ${{ steps.target.outputs.expo_job }}
-        run: |
-          set -euo pipefail
-          nomad job run /tmp/home-infra/jobs/happy-expo.nomad.hcl
-          echo "Deployed $EXPO_JOB"
