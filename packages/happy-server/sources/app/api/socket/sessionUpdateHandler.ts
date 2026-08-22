@@ -4,7 +4,7 @@ import { buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessio
 import { db } from "@/storage/db";
 import { allocateSessionSeq, allocateUserSeq } from "@/storage/seq";
 import { AsyncLock } from "@/utils/lock";
-import { log } from "@/utils/log";
+import { log, warn } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { dispatchNewMessagePush } from "@/app/push/pushDispatch";
 import { Socket } from "socket.io";
@@ -198,6 +198,12 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     where: { id: sid, accountId: userId }
                 });
                 if (!session) {
+                    // [LAW:no-silent-failure] The sender gets no ack and no error, so
+                    // from the client's side the message simply never appears. Without
+                    // this line the drop leaves no trace on any tier — name the two
+                    // causes (unknown id vs. session owned by another account) since
+                    // the lookup cannot distinguish them.
+                    warn({ module: 'websocket' }, `Dropping message from socket ${socket.id}: session ${sid} not found for account ${userId} (unknown session, or owned by a different account)`);
                     return;
                 }
                 let useLocalId = typeof localId === 'string' ? localId : null;

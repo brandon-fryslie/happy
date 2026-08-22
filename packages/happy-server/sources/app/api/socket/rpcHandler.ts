@@ -1,4 +1,4 @@
-import { log } from "@/utils/log";
+import { log, warn } from "@/utils/log";
 import { Server, Socket } from "socket.io";
 import type { RemoteSocket } from "socket.io";
 import type { DefaultEventsMap } from "socket.io/dist/typed-events";
@@ -186,6 +186,12 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             }
 
             if (targets.length === 0) {
+                // [LAW:no-silent-failure] This is the "my daemon isn't reachable" case
+                // — nobody has registered the method after the reconnect grace period.
+                // It previously produced only a metrics counter, so with metrics
+                // unscraped it was invisible. `method` embeds the machineId, which is
+                // the join key back to the CLI daemon's own log.
+                warn({ module: 'websocket' }, `RPC unroutable: no socket registered for room ${room} (user ${userId}, method ${method}) after ${RPC_RECONNECT_GRACE_MS}ms grace`);
                 finish('not_available');
                 callback?.({ ok: false, error: 'RPC method not available' });
                 return;
@@ -243,7 +249,13 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
                 callback?.({ ok: true, result: response });
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : 'RPC call failed';
-                finish(errorMsg === 'RPC target disconnected' ? 'target_disconnected' : 'timeout');
+                const outcome = errorMsg === 'RPC target disconnected' ? 'target_disconnected' : 'timeout';
+                // [LAW:no-silent-failure] The target was found but never answered.
+                // Distinguishing this from 'not_available' above is the whole
+                // diagnosis: registered-but-silent means the daemon is up and wedged,
+                // not absent.
+                warn({ module: 'websocket' }, `RPC ${outcome}: room ${room} (user ${userId}, method ${method}) — ${errorMsg}`);
+                finish(outcome);
                 callback?.({ ok: false, error: errorMsg });
             } finally {
                 presenceAlive = false;

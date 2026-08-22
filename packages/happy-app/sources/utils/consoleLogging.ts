@@ -32,6 +32,9 @@ const MAX_BUFFER_SIZE = MAX_APP_LOG_ENTRIES
 let isConsolePatched = false
 let remoteLogServerUrl: string | null = null
 let consoleOutputEnabled = false
+// Whether the last remote-log POST reached the collector. Drives one-shot
+// transition notices so an unreachable collector is visible rather than silent.
+let remoteDeliveryHealthy = true
 let originalConsole: {
   log: typeof console.log,
   info: typeof console.info,
@@ -81,6 +84,47 @@ export function initConsoleLogging() {
     }).join(' ')
   }
 
+  // [LAW:no-silent-failure] Remote delivery health is reported as a state
+  // transition, not per line. Reporting every failed POST would flood the very
+  // console we are trying to read, and staying silent (the previous behaviour)
+  // made an unreachable collector indistinguishable from an idle app - the
+  // reader sees no logs either way and cannot tell which.
+  //
+  // The notice goes through originalConsole, never the patched console, because
+  // the patched one calls back into sendLog and would recurse forever. It is
+  // also pushed into the in-app buffer, since on a physical device the Dev
+  // screen's log viewer is the only surface the user can actually read.
+  function noteDeliveryState(message: string, level: 'error' | 'log') {
+    originalConsole![level](message)
+    const formatted = `[ConsoleLogging] ${message}`
+    log.captureFormatted(level === 'error' ? 'error' : 'info', formatted)
+    logBuffer.push({ timestamp: new Date().toISOString(), level, message: formatted })
+    if (logBuffer.length > MAX_BUFFER_SIZE) {
+      logBuffer.shift()
+    }
+  }
+
+  function onDeliveryFailed(reason: string) {
+    if (!remoteDeliveryHealthy) {
+      return
+    }
+    remoteDeliveryHealthy = false
+    noteDeliveryState(
+      `Remote log delivery to ${remoteLogServerUrl} FAILED (${reason}). ` +
+      `Logs are still captured in this in-app buffer. Check that the collector is ` +
+      `running ("pnpm app-logs") and reachable from this device.`,
+      'error'
+    )
+  }
+
+  function onDeliverySucceeded() {
+    if (remoteDeliveryHealthy) {
+      return
+    }
+    remoteDeliveryHealthy = true
+    noteDeliveryState(`Remote log delivery to ${remoteLogServerUrl} recovered.`, 'log')
+  }
+
   function sendLog(level: string, formatted: string) {
     if (!remoteLogServerUrl) {
       return
@@ -96,7 +140,15 @@ export function initConsoleLogging() {
         source: 'mobile',
         platform: Platform.OS,
       })
-    }).catch(() => {})
+    }).then(res => {
+      // A non-2xx is just as much a delivery failure as a thrown request; the
+      // collector rejecting malformed payloads must not read as success.
+      if (res.ok) {
+        onDeliverySucceeded()
+      } else {
+        onDeliveryFailed(`HTTP ${res.status}`)
+      }
+    }).catch(e => onDeliveryFailed(String(e?.message ?? e)))
   }
 
   // Patch console methods
