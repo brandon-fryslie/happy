@@ -254,8 +254,20 @@ class ApiSocket {
         }
     }
 
-    private updateStatus(status: 'disconnected' | 'connecting' | 'connected' | 'error') {
+    // [LAW:no-silent-failure] Connection failures used to log only when the
+    // verboseLogging setting was on — and isVerboseLogging() fails closed, so by
+    // default a phone that could not reach the server produced no record at all:
+    // the user saw a status dot change and nothing else was knowable.
+    //
+    // [LAW:single-enforcer] Reporting lives here rather than in each handler
+    // because this is the one function that already knows a transition happened.
+    // Reconnection is infinite with a 5s backoff, so logging per attempt would
+    // flood the buffer; logging per transition cannot.
+    private updateStatus(status: 'disconnected' | 'connecting' | 'connected' | 'error', reason?: string) {
         if (this.currentStatus !== status) {
+            if (status === 'error' || status === 'disconnected') {
+                console.error(`🔌 SyncSocket: ${this.currentStatus} → ${status}${reason ? ` (${reason})` : ''}`);
+            }
             this.currentStatus = status;
             this.statusListeners.forEach(listener => listener(status));
         }
@@ -277,25 +289,16 @@ class ApiSocket {
         });
 
         this.socket.on('disconnect', (reason) => {
-            if (this.isVerboseLogging()) {
-                console.log('🔌 SyncSocket: Disconnected', reason);
-            }
-            this.updateStatus('disconnected');
+            this.updateStatus('disconnected', reason);
         });
 
         // Error events
         this.socket.on('connect_error', (error) => {
-            if (this.isVerboseLogging()) {
-                console.error('🔌 SyncSocket: Connection error', error);
-            }
-            this.updateStatus('error');
+            this.updateStatus('error', `connect_error: ${error?.message ?? error}`);
         });
 
         this.socket.on('error', (error) => {
-            if (this.isVerboseLogging()) {
-                console.error('🔌 SyncSocket: Error', error);
-            }
-            this.updateStatus('error');
+            this.updateStatus('error', `error: ${(error as Error)?.message ?? error}`);
         });
 
         // Message handling

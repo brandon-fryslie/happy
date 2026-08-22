@@ -155,10 +155,19 @@ export class SessionEncryption {
         const encryptedData = decodeBase64(encrypted, 'base64');
         const decrypted = await this.encryptor.decrypt([encryptedData]);
         if (!decrypted[0]) {
+            // [LAW:no-silent-failure] A null return renders the session as a blank
+            // unnamed row, so "my phone doesn't show the session" has to be
+            // diagnosable from here. console.error is deliberate: it is the one level
+            // that survives the console patch by default, so it reaches the in-app
+            // buffer and the remote collector rather than being dropped.
+            console.error(`[SessionEncryption] Metadata DECRYPT failed for session ${this.sessionId} v${version} — wrong data key for this session`);
             return null;
         }
         const parsed = MetadataSchema.safeParse(decrypted[0]);
         if (!parsed.success) {
+            // Distinct from the branch above on purpose: decryption succeeding but the
+            // schema rejecting means client/server version drift, not a key problem.
+            console.error(`[SessionEncryption] Metadata SCHEMA parse failed for session ${this.sessionId} v${version} — client/server schema drift:`, parsed.error.issues);
             return null;
         }
 
@@ -193,10 +202,17 @@ export class SessionEncryption {
         const encryptedData = decodeBase64(encrypted, 'base64');
         const decrypted = await this.encryptor.decrypt([encryptedData]);
         if (!decrypted[0]) {
+            // [LAW:no-silent-failure] agentState.requests carries pending permission
+            // prompts, so an empty object here is an answer-shaped void: it is
+            // indistinguishable from "nothing to approve" and presents as prompts
+            // that never arrive. The empty return is kept (callers assume a value),
+            // but it must no longer be silent.
+            console.error(`[SessionEncryption] AgentState DECRYPT failed for session ${this.sessionId} v${version} — wrong data key; any pending permission requests are invisible to this client`);
             return {};
         }
         const parsed = AgentStateSchema.safeParse(decrypted[0]);
         if (!parsed.success) {
+            console.error(`[SessionEncryption] AgentState SCHEMA parse failed for session ${this.sessionId} v${version} — client/server schema drift; pending permission requests are invisible to this client:`, parsed.error.issues);
             return {};
         }
 

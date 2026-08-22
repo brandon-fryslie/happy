@@ -702,7 +702,10 @@ export class ApiSessionClient extends EventEmitter {
                     }
                     throw new Error('Metadata version mismatch');
                 } else if (answer.result === 'error') {
-                    // Hard error - ignore
+                    // [LAW:no-silent-failure] Not retryable, so the flow still gives up
+                    // here - but silently giving up left the CLI's local metadata
+                    // permanently diverged from the server's with no trace anywhere.
+                    logger.debug(`[API] [ERROR] Session ${this.sessionId} metadata update rejected by server at version ${this.metadataVersion}; local metadata is now stale`, answer);
                 }
             });
         });
@@ -729,8 +732,12 @@ export class ApiSessionClient extends EventEmitter {
                     }
                     throw new Error('Agent state version mismatch');
                 } else if (answer.result === 'error') {
-                    // console.error('Agent state update error', answer);
-                    // Hard error - ignore
+                    // [LAW:no-silent-failure] agentState.requests is where permission
+                    // prompts live, so a rejected write here is the exact cause of
+                    // "permission prompts never arrive on my phone": the CLI waits
+                    // forever on a prompt the phone was never told about. Previously
+                    // the only record of it was a commented-out console.error.
+                    logger.debug(`[API] [ERROR] Session ${this.sessionId} agent-state update rejected by server at version ${this.agentStateVersion}; pending permission requests will not reach the client`, answer);
                 }
             });
         });
