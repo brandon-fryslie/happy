@@ -9,6 +9,7 @@ This folder documents how Happy works internally, with a focus on protocol, back
 - encryption.md: Encryption boundaries and on-wire encoding.
 - backend-architecture.md: Internal backend structure, data flow, and key subsystems.
 - deployment.md: How to deploy the backend and required infrastructure.
+- debugging-runbook.md: Diagnosing failures on the homelab deployment — where each tier's logs live, how to correlate them, symptom lookups, and the known blind spots.
 - cli-architecture.md: CLI and daemon architecture and how they interact with the server.
 - multi-process.md: Deeper multi-replica Socket.IO + Redis streams behavior, failure modes, and integration-test history.
 - dev-environments.md: Local `environments/data/` workflow, lab-rat project provisioning, `env:cli` passthrough behavior, and daemon usage.
