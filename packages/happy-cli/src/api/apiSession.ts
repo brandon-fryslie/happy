@@ -651,6 +651,18 @@ export class ApiSessionClient extends EventEmitter {
 
         const costs = calculateCost(usage, model);
 
+        // [LAW:no-silent-failure] The usage report has no way to say "cost
+        // unknown" — the server requires a numeric cost.total and the app adds
+        // it straight into the spend it shows. Publishing a zero for a model we
+        // hold no rates for would land in that total looking like a real
+        // answer, so we withhold the report and name the model instead. Each
+        // report is a whole-record upsert of the latest turn rather than a
+        // running sum, so skipping one drops nothing already counted.
+        if (!costs) {
+            logger.warn(`[SOCKET] No published pricing for model '${model ?? 'unknown'}'; skipping usage report`);
+            return;
+        }
+
         // Transform Claude usage format to backend expected format
         const usageReport = {
             key: 'claude-session',

@@ -10,6 +10,13 @@ export const UsageSchema = z.object({
   input_tokens: z.number().int().nonnegative(),
   cache_creation_input_tokens: z.number().int().nonnegative().optional(),
   cache_read_input_tokens: z.number().int().nonnegative().optional(),
+  // Cache writes split by TTL. The two tiers bill at different multiples of the
+  // base input rate, so pricing needs them apart; `cache_creation_input_tokens`
+  // above is their sum and is all older payloads carry.
+  cache_creation: z.object({
+    ephemeral_5m_input_tokens: z.number().int().nonnegative().optional(),
+    ephemeral_1h_input_tokens: z.number().int().nonnegative().optional(),
+  }).passthrough().optional(),
   output_tokens: z.number().int().nonnegative(),
   service_tier: z.string().optional(),
 }).passthrough();
