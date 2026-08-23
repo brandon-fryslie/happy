@@ -194,16 +194,16 @@ describe('modelModeOptions', () => {
 
     describe('default effort level', () => {
         it('starts claude sessions on high rather than the top of the ladder', () => {
-            expect(getDefaultEffortKeyForModel('claude', 'default')).toBe('high');
+            expect(getDefaultEffortKeyForModel('claude', 'default', null)).toBe('high');
         });
 
         it('starts codex sessions on xhigh', () => {
-            expect(getDefaultEffortKeyForModel('codex', 'default')).toBe('xhigh');
+            expect(getDefaultEffortKeyForModel('codex', 'default', null)).toBe('xhigh');
         });
 
         it('has no default where there is no effort ladder', () => {
-            expect(getDefaultEffortKeyForModel('gemini', 'gemini-2.5-pro')).toBeNull();
-            expect(getEffortLevelsForModel('gemini', 'gemini-2.5-pro')).toEqual([]);
+            expect(getDefaultEffortKeyForModel('gemini', 'gemini-2.5-pro', null)).toBeNull();
+            expect(getEffortLevelsForModel('gemini', 'gemini-2.5-pro', null)).toEqual([]);
         });
 
         // The default used to be read off the end of the ladder, which meant
@@ -211,20 +211,20 @@ describe('modelModeOptions', () => {
         // rules apart: the default has to be a level that exists, and for claude
         // it has to be one the list order would not have picked.
         it.each(['claude', 'codex'] as const)('defaults to a level that is on the %s ladder', (flavor) => {
-            const levels = getEffortLevelsForModel(flavor, 'default');
-            const defaultKey = getDefaultEffortKeyForModel(flavor, 'default');
+            const levels = getEffortLevelsForModel(flavor, 'default', null);
+            const defaultKey = getDefaultEffortKeyForModel(flavor, 'default', null);
 
             expect(levels.map((level) => level.key)).toContain(defaultKey);
         });
 
         it('does not read the claude default off the end of the ladder', () => {
-            const levels = getEffortLevelsForModel('claude', 'default');
+            const levels = getEffortLevelsForModel('claude', 'default', null);
 
-            expect(getDefaultEffortKeyForModel('claude', 'default')).not.toBe(levels[levels.length - 1].key);
+            expect(getDefaultEffortKeyForModel('claude', 'default', null)).not.toBe(levels[levels.length - 1].key);
         });
 
         it('offers xhigh on the claude ladder, between high and max', () => {
-            const keys = getEffortLevelsForModel('claude', 'default').map((level) => level.key);
+            const keys = getEffortLevelsForModel('claude', 'default', null).map((level) => level.key);
 
             expect(keys).toContain('xhigh');
             expect(keys.indexOf('high')).toBeLessThan(keys.indexOf('xhigh'));
@@ -233,10 +233,59 @@ describe('modelModeOptions', () => {
 
         it('names every effort level after its own key', () => {
             for (const flavor of ['claude', 'codex'] as const) {
-                for (const level of getEffortLevelsForModel(flavor, 'default')) {
+                for (const level of getEffortLevelsForModel(flavor, 'default', null)) {
                     expect(level.name).toBe(level.key);
                 }
             }
+        });
+    });
+
+    // Shape observed from the Claude CLI roster on 2026-08-23: every
+    // effort-capable model reports the same five levels, and haiku reports none.
+    // The three metadata states below are what this whole seam exists to keep
+    // apart — an empty list is a host's answer, an absent one is silence.
+    describe('per-model effort from session metadata', () => {
+        const rosterMetadata = {
+            models: [
+                { code: 'default', value: 'Default (recommended)', effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'] },
+                { code: 'haiku', value: 'Haiku', effortLevels: [] },
+                { code: 'mystery', value: 'Mystery' },
+            ],
+        } as any;
+
+        it('renders the levels the host published for that model', () => {
+            expect(getEffortLevelsForModel('claude', 'default', rosterMetadata).map((level) => level.key))
+                .toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+        });
+
+        // The payoff: AgentInput hides the effort control on an empty list, so a
+        // model the CLI will not accept effort for stops offering one.
+        it('offers no effort at all for a model the host says takes none', () => {
+            expect(getEffortLevelsForModel('claude', 'haiku', rosterMetadata)).toEqual([]);
+            expect(getDefaultEffortKeyForModel('claude', 'haiku', rosterMetadata)).toBeNull();
+        });
+
+        it('falls back to the flavor ladder for a model the host did not describe', () => {
+            expect(getEffortLevelsForModel('claude', 'mystery', rosterMetadata))
+                .toEqual(getEffortLevelsForModel('claude', 'default', null));
+        });
+
+        // Pinned version keys are the app's own addition to the roster, so the
+        // host never describes them — they must keep an effort picker.
+        it('falls back to the flavor ladder for a pinned model key absent from the roster', () => {
+            expect(getEffortLevelsForModel('claude', 'claude-opus-5', rosterMetadata))
+                .toEqual(getEffortLevelsForModel('claude', 'default', null));
+        });
+
+        it('keeps the flavor default when the published ladder offers it', () => {
+            expect(getDefaultEffortKeyForModel('claude', 'default', rosterMetadata)).toBe('high');
+        });
+
+        it('has no default when the published ladder does not offer the flavor default', () => {
+            const narrow = { models: [{ code: 'default', value: 'Narrow', effortLevels: ['low', 'max'] }] } as any;
+
+            expect(getEffortLevelsForModel('claude', 'default', narrow).map((level) => level.key)).toEqual(['low', 'max']);
+            expect(getDefaultEffortKeyForModel('claude', 'default', narrow)).toBeNull();
         });
     });
 });

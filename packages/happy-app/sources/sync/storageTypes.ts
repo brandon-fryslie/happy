@@ -9,6 +9,11 @@ export const MetadataSchema = z.object({
         code: z.string(),
         value: z.string(),
         description: z.string().nullish(),
+        // The effort levels this model accepts, as its host reports them. `[]`
+        // means the host says this model takes none; absent means the host does
+        // not report effort at all, which is a different fact — see
+        // getEffortLadder in components/modelModeOptions.ts.
+        effortLevels: z.array(z.string()).optional(),
     })).optional(),
     currentModelCode: z.string().optional(),
     operatingModes: z.array(z.object({

@@ -22,6 +22,7 @@ type MetadataOption = {
     code: string;
     value: string;
     description?: string | null;
+    effortLevels?: string[];
 };
 
 const GEMINI_MODEL_FALLBACKS: ModelMode[] = [
@@ -254,8 +255,10 @@ export function getDefaultPermissionModeKey(_flavor: AgentFlavor): string {
 // silently re-picks it. They are stated separately because they are separate.
 type EffortLadder = {
     readonly levels: readonly EffortLevel[];
-    // null means this flavor has no effort ladder at all, which is why the
-    // lookups below need no emptiness check: the empty ladder answers for them.
+    // null means there is no level to start on — either because the ladder is
+    // empty, or because the ladder came from a host that does not offer the
+    // level we would otherwise start on. Both leave the choice to the user, which
+    // is why the lookups below need no emptiness check of their own.
     readonly defaultKey: string | null;
 };
 
@@ -283,35 +286,72 @@ const CODEX_EFFORT_LADDER = effortLadder(['low', 'medium', 'high', 'xhigh'] as c
 
 const NO_EFFORT_LADDER: EffortLadder = { levels: [], defaultKey: null };
 
-// Claude and Codex expose effort levels regardless of which specific model is
-// picked — one ladder per flavor. Callers get a copy so the module's own ladders
-// stay immutable.
-function getEffortLadder(flavor: AgentFlavor): EffortLadder {
+// What this flavor's models can be assumed to accept when nothing has described
+// the specific model — a local-mode session, a CLI too old to report capability,
+// or the new-session screen, which picks a model before any session exists.
+function getFlavorEffortLadder(flavor: AgentFlavor): EffortLadder {
     if (flavor === 'claude') return CLAUDE_EFFORT_LADDER;
     if (flavor === 'codex') return CODEX_EFFORT_LADDER;
     return NO_EFFORT_LADDER;
 }
 
-export function getClaudeEffortLevels(): EffortLevel[] {
-    return [...CLAUDE_EFFORT_LADDER.levels];
+// [LAW:one-source-of-truth] Which effort levels a model accepts is the host's
+// fact, not ours: between two Claude CLI releases sonnet gained xhigh and max,
+// and haiku accepts no effort at all while this flavor ladder offers five. So a
+// host that reports the answer wins outright, and the flavor ladder is only what
+// we say when no one told us.
+//
+// The three states are distinguishable on purpose. `[]` is a host saying "this
+// model takes no effort" — the picker disappears. `null` here is no host answer
+// at all, which must not read as "none", or every pre-capability CLI would lose
+// its effort picker.
+function findPublishedEffortLevels(
+    metadata: Metadata | null | undefined,
+    modelKey: string,
+): readonly string[] | null {
+    return metadata?.models?.find((model) => model.code === modelKey)?.effortLevels ?? null;
 }
 
-export function getCodexEffortLevels(): EffortLevel[] {
-    return [...CODEX_EFFORT_LADDER.levels];
+// The flavor's start-here level survives into a published ladder only if that
+// ladder actually offers it. A default the user cannot select is not a default,
+// and `find` rather than a guard means an absent preference answers itself.
+function publishedEffortLadder(levels: readonly string[], preferredDefaultKey: string | null): EffortLadder {
+    return {
+        levels: levels.map((key) => ({ key, name: key })),
+        defaultKey: levels.find((key) => key === preferredDefaultKey) ?? null,
+    };
 }
 
-export function getHardcodedEffortLevels(flavor: AgentFlavor): EffortLevel[] {
-    return [...getEffortLadder(flavor).levels];
+function getEffortLadder(
+    flavor: AgentFlavor,
+    modelKey: string,
+    metadata: Metadata | null | undefined,
+): EffortLadder {
+    const flavorLadder = getFlavorEffortLadder(flavor);
+    const published = findPublishedEffortLevels(metadata, modelKey);
+    if (published === null) {
+        return flavorLadder;
+    }
+    return publishedEffortLadder(published, flavorLadder.defaultKey);
 }
 
-// Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
-export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string): EffortLevel[] {
-    return [...getEffortLadder(flavor).levels];
+// The effort levels this model accepts. Empty means it accepts none, which is
+// what hides the picker — callers need no separate "does this support effort".
+export function getEffortLevelsForModel(
+    flavor: AgentFlavor,
+    modelKey: string,
+    metadata: Metadata | null | undefined,
+): EffortLevel[] {
+    return [...getEffortLadder(flavor, modelKey, metadata).levels];
 }
 
 // The one answer to "what effort does a session start on".
-export function getDefaultEffortKeyForModel(flavor: AgentFlavor, _modelKey: string): string | null {
-    return getEffortLadder(flavor).defaultKey;
+export function getDefaultEffortKeyForModel(
+    flavor: AgentFlavor,
+    modelKey: string,
+    metadata: Metadata | null | undefined,
+): string | null {
+    return getEffortLadder(flavor, modelKey, metadata).defaultKey;
 }
 
 export function getSupportsWorktree(flavor: AgentFlavor): boolean {
