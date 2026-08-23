@@ -14,7 +14,11 @@ import type { SandboxConfig } from "@/persistence"
 export type { PermissionMode } from "@/api/types"
 import type { PermissionMode } from "@/api/types"
 
-export type ClaudeEffort = 'low' | 'medium' | 'high' | 'max';
+// The ladder itself lives at the SDK boundary in ./sdk/types, next to the SDK's
+// own union it is checked against. Re-exported here so the queue's mode type and
+// the option it feeds keep one spelling.
+export type { ClaudeEffort } from "./sdk/types"
+import type { ClaudeEffort } from "./sdk/types"
 
 export interface EnhancedMode {
     permissionMode: PermissionMode;

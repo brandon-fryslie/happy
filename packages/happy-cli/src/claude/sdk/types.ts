@@ -18,8 +18,39 @@ export type {
 export { AbortError } from '@anthropic-ai/claude-agent-sdk'
 
 // Alias for backward compatibility
-import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk'
+import type { CanUseTool, EffortLevel } from '@anthropic-ai/claude-agent-sdk'
 export type CanCallToolCallback = CanUseTool
+
+/**
+ * The Claude effort ladder, ordered shallowest to deepest.
+ *
+ * [LAW:one-source-of-truth] This array is the only place the ladder is written
+ * down in the CLI. The type, the wire-boundary guard, and the SDK option all
+ * derive from it, so a level cannot be added to some of them and missed by the
+ * rest — the failure that kept `xhigh` unreachable through four transcriptions.
+ */
+export const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const satisfies readonly EffortLevel[]
+
+export type ClaudeEffort = typeof CLAUDE_EFFORT_LEVELS[number]
+
+/**
+ * [LAW:types-are-the-program] Proof that the ladder above still covers the SDK's
+ * own union. The `satisfies` on the array catches a level the SDK dropped; this
+ * catches one the SDK added — together they make an upstream change a build
+ * failure here rather than a level users silently cannot select.
+ */
+type SdkEffortLevelsCovered = EffortLevel extends ClaudeEffort ? true : never
+const _sdkEffortLevelsCovered: SdkEffortLevelsCovered = true
+
+/**
+ * The single parse boundary for effort arriving off the wire, where it is an
+ * untyped value from a client that may be older or newer than this CLI.
+ * [LAW:parse-dont-validate] Narrowing here is what lets every caller downstream
+ * hold a `ClaudeEffort` instead of a cast.
+ */
+export function isClaudeEffort(value: unknown): value is ClaudeEffort {
+    return typeof value === 'string' && (CLAUDE_EFFORT_LEVELS as readonly string[]).includes(value)
+}
 
 /**
  * Adapter type for query options.
@@ -47,9 +78,9 @@ export interface QueryOptions {
     /**
      * Effort level passed straight through to the Claude Agent SDK option
      * of the same name — controls how much thinking/reasoning Claude
-     * applies on each turn ('low' | 'medium' | 'high' | 'max').
+     * applies on each turn. See CLAUDE_EFFORT_LEVELS for the ladder.
      */
-    effort?: 'low' | 'medium' | 'high' | 'max'
+    effort?: ClaudeEffort
 }
 
 /**

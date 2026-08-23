@@ -269,10 +269,12 @@ function effortLadder<K extends string>(keys: readonly K[], defaultKey: NoInfer<
     return { levels: keys.map((key) => ({ key, name: key })), defaultKey };
 }
 
-// high is the API default and the right place for a session to start. max buys
-// correctness with cost and can overthink simpler tasks, so it is somewhere the
-// user chooses to go, never somewhere they land by default.
-const CLAUDE_EFFORT_LADDER = effortLadder(['low', 'medium', 'high', 'max'] as const, 'high');
+// Ordered shallowest to deepest: xhigh sits between high and max, and is the
+// recommendation for coding and agentic work — its absence was pushing users
+// past it to max, which costs more and can overthink simpler tasks.
+// high stays the start: it is the API default, and the level above it should be
+// somewhere the user chooses to go, never somewhere they land.
+const CLAUDE_EFFORT_LADDER = effortLadder(['low', 'medium', 'high', 'xhigh', 'max'] as const, 'high');
 
 // xhigh is what Codex sessions already started on under the last-entry rule.
 // Only Claude's default is re-decided here; preserving Codex's keeps this an
