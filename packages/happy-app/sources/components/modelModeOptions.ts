@@ -23,6 +23,7 @@ type MetadataOption = {
     value: string;
     description?: string | null;
     effortLevels?: string[];
+    resolvedModel?: string;
 };
 
 const GEMINI_MODEL_FALLBACKS: ModelMode[] = [
@@ -173,9 +174,19 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
 // user. Append the pinned entries the roster does not already cover; each one's
 // label restates its key, so an entry this CLI rejects fails loudly at the CLI
 // rather than quietly running a different model.
-function withPinnedClaudeVersions(roster: ModelMode[]): ModelMode[] {
-    const rosterKeys = new Set(roster.map((model) => model.key));
-    return [...roster, ...CLAUDE_MODEL_VERSIONS.filter((model) => !rosterKeys.has(model.key))];
+//
+// A roster row covers two ids: the key the user would send, and the id the CLI
+// says that key resolves to. Deduping on the key alone let a pinned entry
+// through that the roster already offered under an alias — a CLI publishing
+// `claude-fable-5[1m]` (resolving to `claude-fable-5`) put Fable in the picker
+// twice, under two different labels. `resolvedModel` is how the CLI states that
+// correspondence; an absent one covers only the key, which is the pre-capability
+// behaviour and correct for a CLI that does not report it.
+function withPinnedClaudeVersions(roster: MetadataOption[]): ModelMode[] {
+    const covered = new Set(roster.flatMap((option) => (
+        option.resolvedModel ? [option.code, option.resolvedModel] : [option.code]
+    )));
+    return [...mapMetadataOptions(roster), ...CLAUDE_MODEL_VERSIONS.filter((model) => !covered.has(model.key))];
 }
 
 export function getAvailableModels(
@@ -183,13 +194,14 @@ export function getAvailableModels(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): ModelMode[] {
-    const metadataModels = mapMetadataOptions(metadata?.models);
+    const rosterOptions = metadata?.models ?? [];
+    const metadataModels = mapMetadataOptions(rosterOptions);
     if (metadataModels.length > 0) {
         if (flavor === 'codex' && !metadataModels.some((model) => model.key === 'default')) {
             return [{ key: 'default', name: 'default model', description: null }, ...metadataModels];
         }
         if (flavor === 'claude') {
-            return withPinnedClaudeVersions(metadataModels);
+            return withPinnedClaudeVersions(rosterOptions);
         }
         return metadataModels;
     }

@@ -43,6 +43,17 @@ describe('toModelRosterEntries', () => {
     expect(toModelRosterEntries(SDK_MODELS)[1].effortLevels).toEqual([])
   })
 
+  it('publishes the model an alias resolves to', () => {
+    const [entry] = toModelRosterEntries([
+      { value: 'sonnet', displayName: 'Sonnet', description: 'Sonnet 5', resolvedModel: 'claude-sonnet-5' },
+    ])
+    expect(entry.resolvedModel).toBe('claude-sonnet-5')
+  })
+
+  it('says nothing about the resolved model when the CLI does not name one', () => {
+    expect(toModelRosterEntries(SDK_MODELS)[1].resolvedModel).toBeUndefined()
+  })
+
   it('says nothing about effort when the CLI claims support but names no levels', () => {
     const [entry] = toModelRosterEntries([
       { value: 'mystery', displayName: 'Mystery', description: 'unenumerated', supportsEffort: true },

@@ -288,7 +288,10 @@ export type Metadata = {
   // the levels it accepts, `[]` for a model that accepts none. Absent means the
   // host does not report effort at all — a different fact from "none", and the
   // app falls back to its own ladder there rather than hiding the picker.
-  models?: Array<{ code: string; value: string; description?: string | null; effortLevels?: string[] }>,
+  // `resolvedModel` is the canonical model id `code` currently resolves to, so a
+  // reader can tell that two entries name one model. Absent means the host does
+  // not answer that question; it is never inferred from `code`.
+  models?: Array<{ code: string; value: string; description?: string | null; effortLevels?: string[]; resolvedModel?: string }>,
   currentModelCode?: string,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,
