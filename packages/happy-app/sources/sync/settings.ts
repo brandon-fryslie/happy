@@ -112,7 +112,7 @@ export const settingsDefaults: Settings = {
     hideInactiveSessions: false,
     expResumeSession: false,
     fileDiffsSidebar: false,
-    expImageUpload: false,
+    expImageUpload: true,
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,
     voiceAssistantLanguage: null,
