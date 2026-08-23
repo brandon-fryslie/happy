@@ -49,6 +49,11 @@ export function toModelRosterEntries(models: ModelInfo[]): ModelRosterEntry[] {
     value: model.displayName,
     description: model.description,
     effortLevels: toEffortLevels(model),
+    // [LAW:one-source-of-truth] Which model an alias runs is the CLI's fact, and
+    // this is the CLI stating it. Passed through unmapped and left absent when
+    // the CLI omits it — a resolved id is not derivable from the alias, so
+    // guessing one would manufacture the very claim this field exists to source.
+    resolvedModel: model.resolvedModel,
   }))
 }
 

@@ -160,6 +160,26 @@ describe('modelModeOptions', () => {
         ]);
     });
 
+    it('does not offer a pinned claude version the roster already covers under an alias', () => {
+        const models = getAvailableModels('claude', {
+            models: [
+                { code: 'default', value: 'Default (recommended)', description: null },
+                { code: 'claude-fable-5[1m]', value: 'Fable', description: 'Fable 5', resolvedModel: 'claude-fable-5' },
+            ],
+        } as any, translate);
+
+        expect(models.filter((model) => model.key === 'claude-fable-5')).toEqual([]);
+        expect(models.some((model) => model.key === 'claude-fable-5[1m]')).toBe(true);
+    });
+
+    it('keeps pinned claude versions when the roster names no resolved model', () => {
+        const models = getAvailableModels('claude', {
+            models: [{ code: 'claude-fable-5[1m]', value: 'Fable', description: 'Fable 5' }],
+        } as any, translate);
+
+        expect(models.some((model) => model.key === 'claude-fable-5')).toBe(true);
+    });
+
     it('keeps codex permission modes hardcoded even when metadata modes exist', () => {
         const modes = getAvailablePermissionModes('codex', {
             operatingModes: [{ code: 'metadata-only', value: 'Metadata Mode', description: null }],

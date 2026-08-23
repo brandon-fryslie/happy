@@ -14,6 +14,10 @@ export const MetadataSchema = z.object({
         // not report effort at all, which is a different fact — see
         // getEffortLadder in components/modelModeOptions.ts.
         effortLevels: z.array(z.string()).optional(),
+        // The canonical model id `code` currently resolves to, as the host
+        // reports it. Absent means the host does not answer that question — see
+        // withPinnedClaudeVersions in components/modelModeOptions.ts.
+        resolvedModel: z.string().optional(),
     })).optional(),
     currentModelCode: z.string().optional(),
     operatingModes: z.array(z.object({
