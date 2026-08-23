@@ -368,6 +368,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             slashCommands: metadata.slashCommands,
                             mcpServers: metadata.mcpServers,
                             skills: metadata.skills,
+                            // A null roster means the CLI could not tell us — keep
+                            // whatever the session already carries rather than
+                            // overwriting a known roster with an unknown one.
+                            ...(metadata.models ? { models: metadata.models } : {}),
+                            currentModelCode: metadata.currentModelCode,
                         }));
                     },
                     onQueryReady: (q) => {

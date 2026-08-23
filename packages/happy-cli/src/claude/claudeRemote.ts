@@ -12,6 +12,7 @@ import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
+import { fetchModelRoster, type ModelRosterEntry } from "./sdk/modelRoster";
 
 export async function claudeRemote(opts: {
 
@@ -42,7 +43,7 @@ export async function claudeRemote(opts: {
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void,
-    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[] }) => void
+    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[]; models?: ModelRosterEntry[] | null; currentModelCode?: string }) => void
 }) {
 
     // Check if session is valid
@@ -193,11 +194,18 @@ export async function claudeRemote(opts: {
                 // Start a watcher for to detect the session id
                 // Emit SDK metadata (tools, slash commands) from init message
                 if (opts.onSDKMetadata) {
+                    // `systemInit.model` is the *resolved* id ('claude-sonnet-4-6'),
+                    // which is never a roster code — the roster is keyed by alias.
+                    // The key we asked for is, and `undefined` is how the 'default'
+                    // key travels to the SDK, so map it back the way it came.
+                    const currentModelCode = sdkOptions.model ?? 'default';
                     opts.onSDKMetadata({
                         tools: systemInit.tools,
                         slashCommands: systemInit.slash_commands,
                         mcpServers: systemInit.mcp_servers?.map(s => ({ name: s.name, status: s.status })),
                         skills: systemInit.skills,
+                        models: await fetchModelRoster(response),
+                        currentModelCode,
                     });
                 }
 

@@ -125,6 +125,41 @@ describe('modelModeOptions', () => {
         ]);
     });
 
+    it('leads with the claude roster the CLI published', () => {
+        const models = getAvailableModels('claude', {
+            models: [
+                { code: 'default', value: 'Default (recommended)', description: 'Opus 4.6 · Most capable' },
+                { code: 'haiku', value: 'Haiku', description: 'Haiku 4.5 · Fastest' },
+            ],
+        } as any, translate);
+
+        expect(models.slice(0, 2)).toEqual([
+            { key: 'default', name: 'Default (recommended)', description: 'Opus 4.6 · Most capable' },
+            { key: 'haiku', name: 'Haiku', description: 'Haiku 4.5 · Fastest' },
+        ]);
+    });
+
+    it('keeps pinned claude versions selectable alongside the published roster', () => {
+        const models = getAvailableModels('claude', {
+            models: [{ code: 'default', value: 'Default (recommended)', description: null }],
+        } as any, translate);
+
+        expect(models.some((model) => model.key === 'claude-opus-5')).toBe(true);
+    });
+
+    it('does not offer a pinned claude version the published roster already lists', () => {
+        const models = getAvailableModels('claude', {
+            models: [
+                { code: 'default', value: 'Default (recommended)', description: null },
+                { code: 'claude-opus-5', value: 'Opus 5', description: 'From the CLI' },
+            ],
+        } as any, translate);
+
+        expect(models.filter((model) => model.key === 'claude-opus-5')).toEqual([
+            { key: 'claude-opus-5', name: 'Opus 5', description: 'From the CLI' },
+        ]);
+    });
+
     it('keeps codex permission modes hardcoded even when metadata modes exist', () => {
         const modes = getAvailablePermissionModes('codex', {
             operatingModes: [{ code: 'metadata-only', value: 'Metadata Mode', description: null }],

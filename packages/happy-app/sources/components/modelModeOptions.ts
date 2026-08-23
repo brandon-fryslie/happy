@@ -165,6 +165,18 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     return getClaudeModelModes();
 }
 
+// The roster the Claude CLI publishes is its *picker* list — aliases only
+// (default/sonnet/haiku/opus[1m]), each labelled with the version it currently
+// resolves to. `--model` still accepts an exact model id that never appears
+// there, so a roster used verbatim would take version pinning away from the
+// user. Append the pinned entries the roster does not already cover; each one's
+// label restates its key, so an entry this CLI rejects fails loudly at the CLI
+// rather than quietly running a different model.
+function withPinnedClaudeVersions(roster: ModelMode[]): ModelMode[] {
+    const rosterKeys = new Set(roster.map((model) => model.key));
+    return [...roster, ...CLAUDE_MODEL_VERSIONS.filter((model) => !rosterKeys.has(model.key))];
+}
+
 export function getAvailableModels(
     flavor: AgentFlavor,
     metadata: Metadata | null | undefined,
@@ -174,6 +186,9 @@ export function getAvailableModels(
     if (metadataModels.length > 0) {
         if (flavor === 'codex' && !metadataModels.some((model) => model.key === 'default')) {
             return [{ key: 'default', name: 'default model', description: null }, ...metadataModels];
+        }
+        if (flavor === 'claude') {
+            return withPinnedClaudeVersions(metadataModels);
         }
         return metadataModels;
     }
