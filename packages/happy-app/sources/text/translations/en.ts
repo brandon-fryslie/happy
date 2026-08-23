@@ -1049,6 +1049,9 @@ export const en: TranslationStructure = {
             : `${count} images could not be uploaded and were not sent.`,
         notSupportedTitle: 'Images Not Supported',
         notSupportedMessage: 'This agent does not support image attachments. Only the text was sent.',
+        cliTooOldTitle: 'Update Happy On That Machine',
+        cliTooOldMessage: ({ requiredVersion }: { requiredVersion: string }) =>
+            `The machine running this session needs happy CLI ${requiredVersion} or newer to receive images. Only the text was sent.`,
     },
 
     feed: {

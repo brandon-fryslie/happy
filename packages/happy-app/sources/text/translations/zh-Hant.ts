@@ -1034,6 +1034,9 @@ export const zhHant: TranslationStructure = {
             : `${count} 張圖片上傳失敗，未傳送。`,
         notSupportedTitle: '不支援圖片',
         notSupportedMessage: '此代理不支援圖片附件。僅傳送了文字。',
+        cliTooOldTitle: '請更新該機器上的 Happy',
+        cliTooOldMessage: ({ requiredVersion }: { requiredVersion: string }) =>
+            `執行此工作階段的機器需要 happy CLI ${requiredVersion} 或更新版本才能接收圖片。僅傳送了文字。`,
     },
 
     feed: {

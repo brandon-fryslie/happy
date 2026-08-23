@@ -43,6 +43,7 @@ import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import { resolveAttachmentSupport } from '@/sync/attachmentSupport';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -376,6 +377,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const expImageUpload = useSetting('expImageUpload');
     const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
 
+    // Sessions whose host can't take images keep the strip (so anything already
+    // queued stays visible and removable) but lose the ways to add more. The
+    // refusal itself lives in sync.sendMessage, which is the only thing that can
+    // speak for images that were queued before this metadata arrived.
+    const canAddImages = expImageUpload && resolveAttachmentSupport(session.metadata) === 'supported';
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {
@@ -539,9 +546,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments && !isTablet ? () => router.push(`/session/${sessionId}/files`) : undefined}
             selectedImages={expImageUpload ? selectedImages : undefined}
-            onPickImages={expImageUpload ? pickImages : undefined}
+            onPickImages={canAddImages ? pickImages : undefined}
             onRemoveImage={expImageUpload ? removeImage : undefined}
-            onAddImages={expImageUpload ? addImages : undefined}
+            onAddImages={canAddImages ? addImages : undefined}
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
             usageData={sessionUsage ? {

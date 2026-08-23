@@ -53,10 +53,29 @@ import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
+import { MINIMUM_CLI_VERSION_FOR_ATTACHMENTS, resolveAttachmentSupport, type BlockedAttachmentSupport } from './attachmentSupport';
 import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+
+/**
+ * What to tell the user when a session cannot take the images they attached.
+ * Keyed by the reason so a new one is a compile error here until it has
+ * something to say, and typed against the blocked kinds so 'supported' cannot
+ * reach it. The thunks matter: `t(...)` reads the active language, and a bare
+ * record would freeze every string at module-import time.
+ */
+const BLOCKED_ATTACHMENT_ALERTS: Record<BlockedAttachmentSupport, () => { title: string; message: string }> = {
+    unsupportedAgent: () => ({
+        title: t('imageUpload.notSupportedTitle'),
+        message: t('imageUpload.notSupportedMessage'),
+    }),
+    outdatedCli: () => ({
+        title: t('imageUpload.cliTooOldTitle'),
+        message: t('imageUpload.cliTooOldMessage', { requiredVersion: MINIMUM_CLI_VERSION_FOR_ATTACHMENTS }),
+    }),
+};
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -562,20 +581,17 @@ class Sync {
         const { permissionMode, model, effort } = resolveMessageModeMeta(session);
         const { displayText, source = 'chat', attachments } = options ?? {};
 
-        // Image attachments are wired into the Claude pipeline only; Codex /
-        // Gemini / OpenClaw runners read message.content.text and ignore
-        // file events, so dropping attachments silently would leave the user
-        // wondering why the image was skipped. Warn and send text only.
-        const flavor = session.metadata?.flavor;
-        const supportsAttachments = !flavor || flavor === 'claude';
-        const effectiveAttachments = supportsAttachments ? attachments : undefined;
+        // [LAW:single-enforcer] The one place that decides whether attachments
+        // may travel. The composer hides the attach button for these sessions,
+        // but images queued before the session's metadata arrived still land
+        // here — and a drop the user never hears about is the bug this whole
+        // path exists to prevent. Warn and send text only.
+        const attachmentSupport = resolveAttachmentSupport(session.metadata);
+        const effectiveAttachments = attachmentSupport === 'supported' ? attachments : undefined;
 
-        if (attachments && attachments.length > 0 && !supportsAttachments) {
-            Modal.alert(
-                t('imageUpload.notSupportedTitle'),
-                t('imageUpload.notSupportedMessage'),
-                [{ text: t('common.ok'), style: 'cancel' }],
-            );
+        if (attachments && attachments.length > 0 && attachmentSupport !== 'supported') {
+            const { title, message } = BLOCKED_ATTACHMENT_ALERTS[attachmentSupport]();
+            Modal.alert(title, message, [{ text: t('common.ok'), style: 'cancel' }]);
         }
 
         // Upload attachments and queue file events before the text message.

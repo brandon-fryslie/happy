@@ -1033,6 +1033,9 @@ export const pt: TranslationStructure = {
             : `Não foi possível enviar ${count} imagens e não foram enviadas.`,
         notSupportedTitle: 'Imagens não suportadas',
         notSupportedMessage: 'Este agente não suporta anexos de imagem. Apenas o texto foi enviado.',
+        cliTooOldTitle: 'Atualize o Happy nessa máquina',
+        cliTooOldMessage: ({ requiredVersion }: { requiredVersion: string }) =>
+            `A máquina que executa esta sessão precisa do happy CLI ${requiredVersion} ou mais recente para receber imagens. Apenas o texto foi enviado.`,
     },
 
     feed: {
