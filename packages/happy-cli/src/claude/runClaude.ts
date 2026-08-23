@@ -8,6 +8,7 @@ import { AgentState, Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
+import { isClaudeEffort, type ClaudeEffort } from './sdk/types';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import {
     describeRejectedAttachments,
@@ -411,7 +412,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
-    let currentEffort: 'low' | 'medium' | 'high' | 'max' | undefined = undefined; // Track current Claude effort (thinking depth)
+    let currentEffort: ClaudeEffort | undefined = undefined; // Track current Claude effort (thinking depth)
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
     // Exit when session is archived from web/mobile
     session.on('archived', () => {
@@ -539,18 +540,18 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
 
         // Resolve effort — pass through to Claude SDK as the `effort` option.
-        // Validate against the SDK's accepted set so a stale/garbage value
-        // from the wire doesn't poison the session.
+        // isClaudeEffort is the parse boundary: a level from a client running a
+        // different ladder than this CLI is dropped here, never forwarded to a
+        // Claude binary that would reject it mid-session.
         let messageEffort = currentEffort;
-        const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'max']);
         if (message.meta?.hasOwnProperty('effort')) {
             const incoming = (message.meta as Record<string, unknown>).effort;
             if (incoming === null || incoming === undefined) {
                 messageEffort = undefined;
                 currentEffort = undefined;
                 logger.debug(`[loop] Effort reset to default`);
-            } else if (typeof incoming === 'string' && VALID_EFFORTS.has(incoming)) {
-                messageEffort = incoming as 'low' | 'medium' | 'high' | 'max';
+            } else if (isClaudeEffort(incoming)) {
+                messageEffort = incoming;
                 currentEffort = messageEffort;
                 logger.debug(`[loop] Effort updated from user message: ${messageEffort}`);
             } else {

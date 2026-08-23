@@ -223,6 +223,14 @@ describe('modelModeOptions', () => {
             expect(getDefaultEffortKeyForModel('claude', 'default')).not.toBe(levels[levels.length - 1].key);
         });
 
+        it('offers xhigh on the claude ladder, between high and max', () => {
+            const keys = getEffortLevelsForModel('claude', 'default').map((level) => level.key);
+
+            expect(keys).toContain('xhigh');
+            expect(keys.indexOf('high')).toBeLessThan(keys.indexOf('xhigh'));
+            expect(keys.indexOf('xhigh')).toBeLessThan(keys.indexOf('max'));
+        });
+
         it('names every effort level after its own key', () => {
             for (const flavor of ['claude', 'codex'] as const) {
                 for (const level of getEffortLevelsForModel(flavor, 'default')) {

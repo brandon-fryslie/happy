@@ -692,7 +692,9 @@ class Sync {
                 model,
                 fallbackModel,
                 appendSystemPrompt: systemPrompt,
-                ...(effort && { effort }), // Forward effort (low/medium/high/max for Claude, low/medium/high/xhigh for Codex)
+                // Forwarded opaquely — which levels exist per flavor is the
+                // ladder's business (modelModeOptions), not the wire's.
+                ...(effort && { effort }),
                 ...(displayText && { displayText }) // Add displayText if provided
             }
         };
