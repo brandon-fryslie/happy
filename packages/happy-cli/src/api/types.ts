@@ -284,7 +284,11 @@ export type Metadata = {
    * ACP session config option value (normalized for UI metadata consumers).
    */
   // `code` = protocol value ID, `value` = human label
-  models?: Array<{ code: string; value: string; description?: string | null }>,
+  // `effortLevels` is the model's own effort capability, as its host reports it:
+  // the levels it accepts, `[]` for a model that accepts none. Absent means the
+  // host does not report effort at all — a different fact from "none", and the
+  // app falls back to its own ladder there rather than hiding the picker.
+  models?: Array<{ code: string; value: string; description?: string | null; effortLevels?: string[] }>,
   currentModelCode?: string,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,

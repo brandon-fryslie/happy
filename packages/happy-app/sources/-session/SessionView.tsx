@@ -352,14 +352,14 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Effort level state
     const modelKey = modelMode?.key ?? 'default';
     const availableEffortLevels = React.useMemo<EffortLevel[]>(() => (
-        getEffortLevelsForModel(flavor, modelKey)
-    ), [flavor, modelKey]);
+        getEffortLevelsForModel(flavor, modelKey, session.metadata)
+    ), [flavor, modelKey, session.metadata]);
     const effortLevel = React.useMemo<EffortLevel | null>(() => (
         resolveCurrentOption(availableEffortLevels, [
             session.effortLevel,
-            getDefaultEffortKeyForModel(flavor, modelKey),
+            getDefaultEffortKeyForModel(flavor, modelKey, session.metadata),
         ])
-    ), [availableEffortLevels, session.effortLevel, flavor, modelKey]);
+    ), [availableEffortLevels, session.effortLevel, flavor, modelKey, session.metadata]);
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);

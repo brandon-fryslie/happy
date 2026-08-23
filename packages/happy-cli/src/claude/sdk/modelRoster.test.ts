@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest'
 import type { ModelInfo } from '@anthropic-ai/claude-agent-sdk'
 import { fetchModelRoster, toModelRosterEntries } from './modelRoster'
 
-// Shape observed from `query().supportedModels()` on Claude Code 2.1.226.
+// Shape observed from `query().supportedModels()` against the bundled CLI on
+// 2026-08-23. Both rows are load-bearing: `default` reports the full ladder,
+// `haiku` reports no effort fields at all, which is what the app has to read as
+// "this model takes no effort setting".
 const SDK_MODELS: ModelInfo[] = [
   {
     value: 'default',
     displayName: 'Default (recommended)',
-    description: 'Opus 4.6 with 1M context · Most capable for complex work',
+    description: 'Opus 5 with 1M context · Best for everyday, complex tasks',
     supportsEffort: true,
-    supportedEffortLevels: ['low', 'medium', 'high', 'max'],
+    supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
   },
   {
     value: 'haiku',
@@ -28,7 +31,23 @@ describe('toModelRosterEntries', () => {
       code: 'haiku',
       value: 'Haiku',
       description: 'Haiku 4.5 · Fastest for quick answers',
+      effortLevels: [],
     })
+  })
+
+  it('publishes the effort levels a model accepts', () => {
+    expect(toModelRosterEntries(SDK_MODELS)[0].effortLevels).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+  })
+
+  it('reports no effort levels for a model the CLI describes without them', () => {
+    expect(toModelRosterEntries(SDK_MODELS)[1].effortLevels).toEqual([])
+  })
+
+  it('says nothing about effort when the CLI claims support but names no levels', () => {
+    const [entry] = toModelRosterEntries([
+      { value: 'mystery', displayName: 'Mystery', description: 'unenumerated', supportsEffort: true },
+    ])
+    expect(entry.effortLevels).toBeUndefined()
   })
 })
 

@@ -302,7 +302,7 @@ function SessionComposerDemo() {
     const currentModelKey = currentModel?.key ?? 'default';
 
     const effortLevels = React.useMemo<EffortLevel[]>(
-        () => getEffortLevelsForModel(selectedAgent, currentModelKey),
+        () => getEffortLevelsForModel(selectedAgent, currentModelKey, null),
         [selectedAgent, currentModelKey],
     );
 
@@ -326,7 +326,7 @@ function SessionComposerDemo() {
 
     // Reset effort when model changes
     React.useEffect(() => {
-        const defaultEffort = getDefaultEffortKeyForModel(selectedAgent, currentModelKey);
+        const defaultEffort = getDefaultEffortKeyForModel(selectedAgent, currentModelKey, null);
         if (defaultEffort && effortLevels.length > 0) {
             const idx = effortLevels.findIndex(e => e.key === defaultEffort);
             setEffortIndex(idx >= 0 ? idx : effortLevels.length - 1);
