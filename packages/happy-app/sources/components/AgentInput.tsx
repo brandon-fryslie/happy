@@ -377,7 +377,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Forward ref to the MultiTextInput
     React.useImperativeHandle(ref, () => inputRef.current!, []);
 
-    // Web paste/drag — intercept image pastes and drops for the attachment feature
+    // Web paste — intercept image pastes for the attachment feature.
+    // Drag-and-drop is not wired here yet; dropping a file still hits the browser.
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !props.onAddImages) return;
 
