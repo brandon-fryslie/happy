@@ -1034,6 +1034,9 @@ export const ca: TranslationStructure = {
             : `No s'han pogut pujar ${count} imatges i no s'han enviat.`,
         notSupportedTitle: 'Imatges no compatibles',
         notSupportedMessage: 'Aquest agent no admet imatges adjuntes. Només s\'ha enviat el text.',
+        cliTooOldTitle: 'Actualitza Happy en aquesta màquina',
+        cliTooOldMessage: ({ requiredVersion }: { requiredVersion: string }) =>
+            `La màquina que executa aquesta sessió necessita happy CLI ${requiredVersion} o posterior per rebre imatges. Només s'ha enviat el text.`,
     },
 
     feed: {

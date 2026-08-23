@@ -1063,6 +1063,9 @@ export const ru: TranslationStructure = {
             : `${count} изображений не удалось загрузить — они не были отправлены.`,
         notSupportedTitle: 'Изображения не поддерживаются',
         notSupportedMessage: 'Этот агент не поддерживает изображения. Отправлен только текст.',
+        cliTooOldTitle: 'Обновите Happy на этой машине',
+        cliTooOldMessage: ({ requiredVersion }: { requiredVersion: string }) =>
+            `Машине, на которой работает эта сессия, нужен happy CLI ${requiredVersion} или новее, чтобы принимать изображения. Отправлен только текст.`,
     },
 
     feed: {
