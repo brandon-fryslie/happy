@@ -3,9 +3,12 @@ name: AI Code Review
 # First live proof of copirate-code-review-agent on Gitea (home-copirate-review-9uj.7),
 # replacing pr-agent as the reviewer for this repo. The action's gitea transport is
 # capability-detected in src/transport.js — no action code changes needed here, only
-# wiring: the mirrored action, the two Actions secrets from .3/.4, a checkout so the
-# engine can explore the tree, and a per-PR concurrency group so a rapid push loop
-# doesn't pay for reviews of commits that are already replaced.
+# wiring: the mirrored action, the three Actions secrets it consumes
+# (DEEPSEEK_API_KEY and CLAUDE_CODE_OAUTH_TOKEN — the two engine credentials, either
+# of which 'auto' may resolve to — plus COPIRATE_REVIEW_TOKEN for the bot identity)
+# and the LEDGER_ISSUE variable, a checkout so the engine can explore the tree, and a
+# per-PR concurrency group so a rapid push loop doesn't pay for reviews of commits
+# that are already replaced.
 
 on:
   pull_request:
@@ -34,7 +37,16 @@ jobs:
       - name: CoPirate Code Review
         uses: https://gitea.sanctuary.gdn/brandon-fryslie/copirate-code-review-agent@v1
         with:
+          # Both engine credentials, no PROVIDER pin. The action's default
+          # PROVIDER=auto is upstream's retarget knob: 1.42.0 moved it
+          # deepseek → claude-subscription (DeepSeek's 2026-08-16 repricing made
+          # reviews cost real money; a subscription review spends plan quota).
+          # A repo carrying only one key dies at startup on the day auto moves —
+          # which is exactly what happened here for ~2wks (home-copirate-review-itv).
+          # Carrying both means the alias can point either way and this workflow
+          # never needs an edit. [LAW:no-mode-explosion]
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # [LAW:one-source-of-truth] copirate-bot's own token, not the workflow's
           # default GITHUB_TOKEN — only a distinct bot identity can APPROVE (Gitea
           # rejects a PR author's own token approving its own pull), verified live
