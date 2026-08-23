@@ -233,55 +233,68 @@ export function getDefaultPermissionModeKey(_flavor: AgentFlavor): string {
 
 // Effort levels per agent type
 
+// A ladder owns two independent facts: which levels exist, and which one a
+// session starts on. Deriving the second from the first — the rule here used to
+// read the last entry — ties the default to list order, so appending a level
+// silently re-picks it. They are stated separately because they are separate.
+type EffortLadder = {
+    readonly levels: readonly EffortLevel[];
+    // null means this flavor has no effort ladder at all, which is why the
+    // lookups below need no emptiness check: the empty ladder answers for them.
+    readonly defaultKey: string | null;
+};
+
+// [LAW:types-are-the-program] `defaultKey` is checked against the ladder's own
+// keys, so a default that is not a level on the ladder does not compile — and
+// appending a level cannot move it. `NoInfer` is what makes that a check rather
+// than a wish: without it an unknown key would simply widen `K` to admit itself.
+// Effort level names restate their keys, so the builder derives the label rather
+// than keeping a second copy of it.
+function effortLadder<K extends string>(keys: readonly K[], defaultKey: NoInfer<K>): EffortLadder {
+    return { levels: keys.map((key) => ({ key, name: key })), defaultKey };
+}
+
+// high is the API default and the right place for a session to start. max buys
+// correctness with cost and can overthink simpler tasks, so it is somewhere the
+// user chooses to go, never somewhere they land by default.
+const CLAUDE_EFFORT_LADDER = effortLadder(['low', 'medium', 'high', 'max'] as const, 'high');
+
+// xhigh is what Codex sessions already started on under the last-entry rule.
+// Only Claude's default is re-decided here; preserving Codex's keeps this an
+// explicit statement of the status quo rather than a silent change to it.
+const CODEX_EFFORT_LADDER = effortLadder(['low', 'medium', 'high', 'xhigh'] as const, 'xhigh');
+
+const NO_EFFORT_LADDER: EffortLadder = { levels: [], defaultKey: null };
+
+// Claude and Codex expose effort levels regardless of which specific model is
+// picked — one ladder per flavor. Callers get a copy so the module's own ladders
+// stay immutable.
+function getEffortLadder(flavor: AgentFlavor): EffortLadder {
+    if (flavor === 'claude') return CLAUDE_EFFORT_LADDER;
+    if (flavor === 'codex') return CODEX_EFFORT_LADDER;
+    return NO_EFFORT_LADDER;
+}
+
 export function getClaudeEffortLevels(): EffortLevel[] {
-    return [
-        { key: 'low', name: 'low' },
-        { key: 'medium', name: 'medium' },
-        { key: 'high', name: 'high' },
-        { key: 'max', name: 'max' },
-    ];
+    return [...CLAUDE_EFFORT_LADDER.levels];
 }
 
 export function getCodexEffortLevels(): EffortLevel[] {
-    return [
-        { key: 'low', name: 'low' },
-        { key: 'medium', name: 'medium' },
-        { key: 'high', name: 'high' },
-        { key: 'xhigh', name: 'xhigh' },
-    ];
+    return [...CODEX_EFFORT_LADDER.levels];
 }
 
 export function getHardcodedEffortLevels(flavor: AgentFlavor): EffortLevel[] {
-    if (flavor === 'claude') return getClaudeEffortLevels();
-    if (flavor === 'codex') return getCodexEffortLevels();
-    return [];
-}
-
-export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
-    if (flavor === 'claude' || flavor === 'codex') return 'high';
-    return null;
+    return [...getEffortLadder(flavor).levels];
 }
 
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
 export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string): EffortLevel[] {
-    // Claude and Codex expose effort/thought levels regardless of which
-    // specific model is picked — the same low/medium/high/max scale applies
-    // to the whole flavor (mirrors how Codex already worked, which the user
-    // asked Claude to match).
-    if (flavor === 'claude') {
-        return getClaudeEffortLevels();
-    }
-    if (flavor === 'codex') {
-        return getCodexEffortLevels();
-    }
-    return [];
+    return [...getEffortLadder(flavor).levels];
 }
 
-// Default effort for a model — highest the model allows
-export function getDefaultEffortKeyForModel(flavor: AgentFlavor, modelKey: string): string | null {
-    const levels = getEffortLevelsForModel(flavor, modelKey);
-    if (levels.length === 0) return null;
-    return levels[levels.length - 1].key;
+// The one answer to "what effort does a session start on".
+export function getDefaultEffortKeyForModel(flavor: AgentFlavor, _modelKey: string): string | null {
+    return getEffortLadder(flavor).defaultKey;
 }
 
 export function getSupportsWorktree(flavor: AgentFlavor): boolean {

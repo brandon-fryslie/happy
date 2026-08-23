@@ -5,6 +5,8 @@ import {
     getClaudeModelModes,
     getCodexModelModes,
     getClaudePermissionModes,
+    getDefaultEffortKeyForModel,
+    getEffortLevelsForModel,
     mapMetadataOptions,
     resolveCurrentOption,
 } from './modelModeOptions';
@@ -153,5 +155,45 @@ describe('modelModeOptions', () => {
 
         expect(resolveCurrentOption(options, ['missing', 'b', 'a'])).toEqual({ key: 'b', name: 'B' });
         expect(resolveCurrentOption(options, ['missing'])).toBeNull();
+    });
+
+    describe('default effort level', () => {
+        it('starts claude sessions on high rather than the top of the ladder', () => {
+            expect(getDefaultEffortKeyForModel('claude', 'default')).toBe('high');
+        });
+
+        it('starts codex sessions on xhigh', () => {
+            expect(getDefaultEffortKeyForModel('codex', 'default')).toBe('xhigh');
+        });
+
+        it('has no default where there is no effort ladder', () => {
+            expect(getDefaultEffortKeyForModel('gemini', 'gemini-2.5-pro')).toBeNull();
+            expect(getEffortLevelsForModel('gemini', 'gemini-2.5-pro')).toEqual([]);
+        });
+
+        // The default used to be read off the end of the ladder, which meant
+        // appending a level moved it. These two assertions are what tell those
+        // rules apart: the default has to be a level that exists, and for claude
+        // it has to be one the list order would not have picked.
+        it.each(['claude', 'codex'] as const)('defaults to a level that is on the %s ladder', (flavor) => {
+            const levels = getEffortLevelsForModel(flavor, 'default');
+            const defaultKey = getDefaultEffortKeyForModel(flavor, 'default');
+
+            expect(levels.map((level) => level.key)).toContain(defaultKey);
+        });
+
+        it('does not read the claude default off the end of the ladder', () => {
+            const levels = getEffortLevelsForModel('claude', 'default');
+
+            expect(getDefaultEffortKeyForModel('claude', 'default')).not.toBe(levels[levels.length - 1].key);
+        });
+
+        it('names every effort level after its own key', () => {
+            for (const flavor of ['claude', 'codex'] as const) {
+                for (const level of getEffortLevelsForModel(flavor, 'default')) {
+                    expect(level.name).toBe(level.key);
+                }
+            }
+        });
     });
 });
