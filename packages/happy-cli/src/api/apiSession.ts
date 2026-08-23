@@ -6,6 +6,7 @@ import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt } from './enc
 import { backoff, delay } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
+import type { AttachmentOutcome } from '@/claude/claudeImageAttachment';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { deriveKey } from '@/utils/deriveKey';
@@ -88,11 +89,11 @@ export class ApiSessionClient extends EventEmitter {
     private blobKey: Uint8Array | null = null;
     /**
      * In-flight attachment download promises that belong to the *current*
-     * (not-yet-drained) batch. Each promise resolves to the decoded blob (or
-     * null on failure), so per-message ownership is intrinsic — there is no
-     * shared push-array between batches that a late download could leak into.
+     * (not-yet-drained) batch. Each promise resolves to an outcome that keeps
+     * the filename either way, so per-message ownership is intrinsic — there is
+     * no shared push-array between batches that a late download could leak into.
      */
-    private pendingDownloads: Promise<{ data: Uint8Array; mimeType: string; name: string } | null>[] = [];
+    private pendingDownloads: Promise<AttachmentOutcome>[] = [];
     readonly rpcHandlerManager: RpcHandlerManager;
     private agentStateLock = new AsyncLock();
     private metadataLock = new AsyncLock();
@@ -330,27 +331,30 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * Track an attachment download whose promise resolves to the decoded blob
-     * (or null on failure). The download stays in the current batch until the
-     * next drainAttachmentsForUserMessage call swaps the bucket out — file
-     * events that arrive after the swap go into a fresh bucket bound to the
-     * next user-text message.
+     * Track an attachment download whose promise resolves to an outcome — the
+     * parsed attachment, or a rejection naming the file that failed. The
+     * download stays in the current batch until the next
+     * drainAttachmentsForUserMessage call swaps the bucket out — file events
+     * that arrive after the swap go into a fresh bucket bound to the next
+     * user-text message.
      */
-    trackAttachmentDownload(promise: Promise<{ data: Uint8Array; mimeType: string; name: string } | null>): void {
+    trackAttachmentDownload(promise: Promise<AttachmentOutcome>): void {
         this.pendingDownloads.push(promise);
     }
 
     /**
-     * Atomically claim every download started before this call, wait for them
-     * to resolve, and return the successful ones. The swap-then-await order
-     * guarantees that a late-arriving file event cannot leak into this batch.
+     * Atomically claim every download started before this call and wait for it
+     * to resolve. The swap-then-await order guarantees that a late-arriving
+     * file event cannot leak into this batch.
+     *
+     * Rejections are returned alongside the successes rather than filtered out:
+     * [LAW:no-silent-failure] the caller is the only place left that can tell
+     * the user an image they attached never reached the agent.
      */
-    async drainAttachmentsForUserMessage(): Promise<Array<{ data: Uint8Array; mimeType: string; name: string }>> {
+    async drainAttachmentsForUserMessage(): Promise<AttachmentOutcome[]> {
         const downloads = this.pendingDownloads;
         this.pendingDownloads = [];
-        if (downloads.length === 0) return [];
-        const results = await Promise.all(downloads);
-        return results.filter((x): x is { data: Uint8Array; mimeType: string; name: string } => x !== null);
+        return Promise.all(downloads);
     }
 
     private authHeaders() {

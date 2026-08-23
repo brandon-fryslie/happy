@@ -1,5 +1,6 @@
 import { ApiSessionClient } from "@/api/apiSession"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
+import type { ClaudeImageAttachment } from "./claudeImageAttachment"
 import { logger } from "@/ui/logger"
 import { Session } from "./session"
 import { claudeLocalLauncher, LauncherResult } from "./claudeLocalLauncher"
@@ -27,6 +28,13 @@ export interface EnhancedMode {
     effort?: ClaudeEffort;
 }
 
+/**
+ * The one spelling of Claude's message queue. Claude is the only runner whose
+ * queue ferries image attachments, and naming the pairing once keeps the mode
+ * and payload types from drifting apart across the four sites that hold one.
+ */
+export type ClaudeMessageQueue = MessageQueue2<EnhancedMode, ClaudeImageAttachment>;
+
 interface LoopOptions {
     path: string
     model?: string
@@ -38,7 +46,7 @@ interface LoopOptions {
     api: ApiClient,
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
-    messageQueue: MessageQueue2<EnhancedMode>
+    messageQueue: ClaudeMessageQueue
     allowedTools?: string[]
     sandboxConfig?: SandboxConfig
     onSessionReady?: (session: Session) => void
