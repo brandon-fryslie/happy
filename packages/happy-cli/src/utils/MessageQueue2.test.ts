@@ -456,4 +456,51 @@ describe('MessageQueue2', () => {
         expect(batch3?.message).toBe('after-isolated');
         expect(batch3?.mode.type).toBe('B');
     });
+
+    describe('attachment ownership', () => {
+        type Att = { name: string };
+
+        it('hands a batch the attachments of every message merged into it', async () => {
+            const queue = new MessageQueue2<string, Att>(mode => mode);
+
+            queue.push('look at this', 'local', [{ name: 'a.png' }]);
+            queue.push('and this', 'local', [{ name: 'b.png' }]);
+
+            const batch = await queue.waitForMessagesAndGetAsString();
+            expect(batch?.message).toBe('look at this\nand this');
+            expect(batch?.attachments).toEqual([{ name: 'a.png' }, { name: 'b.png' }]);
+        });
+
+        it('never leaks an attachment into a batch its message did not join', async () => {
+            const queue = new MessageQueue2<string, Att>(mode => mode);
+
+            queue.push('first', 'local', [{ name: 'first.png' }]);
+            queue.push('second', 'remote', [{ name: 'second.png' }]);
+
+            const first = await queue.waitForMessagesAndGetAsString();
+            const second = await queue.waitForMessagesAndGetAsString();
+
+            expect(first?.attachments).toEqual([{ name: 'first.png' }]);
+            expect(second?.attachments).toEqual([{ name: 'second.png' }]);
+        });
+
+        it('keeps an isolated message alone with its own attachments', async () => {
+            const queue = new MessageQueue2<string, Att>(mode => mode);
+
+            queue.push('dropped by the clear', 'local', [{ name: 'stale.png' }]);
+            queue.pushIsolateAndClear('/compact', 'local', [{ name: 'kept.png' }]);
+
+            const batch = await queue.waitForMessagesAndGetAsString();
+            expect(batch?.message).toBe('/compact');
+            expect(batch?.attachments).toEqual([{ name: 'kept.png' }]);
+        });
+
+        it('reports no attachments for a plain text batch', async () => {
+            const queue = new MessageQueue2<string, Att>(mode => mode);
+            queue.push('just text', 'local');
+
+            const batch = await queue.waitForMessagesAndGetAsString();
+            expect(batch?.attachments).toBeUndefined();
+        });
+    });
 });
