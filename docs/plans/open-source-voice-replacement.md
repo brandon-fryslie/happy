@@ -2,6 +2,10 @@
 
 Replace the ElevenLabs Conversational AI and TTS services with a self-hosted, API-compatible open-source alternative. Happy changes only URLs — no functionality changes, no SDK forks.
 
+## Status
+
+Spec only — nothing implemented as of 2026-08-23. The server still calls `api.elevenlabs.io` (`voiceRoutes.ts`) and the app still calls it for TTS (`apiTts.ts`). No tracking ticket filed.
+
 ## What ElevenLabs provides today
 
 Happy uses two distinct ElevenLabs products:
@@ -28,7 +32,8 @@ Every URL the ElevenLabs SDKs use is overridable:
 
 | URL | Default | Override option |
 |---|---|---|
-| WebSocket signaling (web) | `wss://api.elevenlabs.io` | `origin` on `SessionConfig` |
+| LiveKit WebRTC (web) | `wss://livekit.rtc.elevenlabs.io` | `livekitUrl` on `SessionConfig` — the knob Happy's web client actually needs |
+| WebSocket signaling (web, unused by Happy) | `wss://api.elevenlabs.io` | `origin` on `SessionConfig` |
 | LiveKit WebRTC (native) | `wss://livekit.rtc.elevenlabs.io` | `serverUrl` on `useConversation` / `ElevenLabsProvider` |
 | Token fetch (if SDK mints its own) | `https://api.elevenlabs.io/v1/convai/conversation/token` | `tokenFetchUrl`; **bypassed entirely** when `conversationToken` is supplied (Happy already does this) |
 
@@ -84,7 +89,9 @@ The native SDK (`@elevenlabs/react-native`) connects directly to a LiveKit serve
 - Hosts rooms where the voice agent and the client participate
 - Supports standard LiveKit audio tracks (the SDK publishes a mic track, the agent publishes a response track)
 
-### 3. WebSocket signaling protocol (consumed by web SDK)
+### 3. WebSocket signaling protocol (consumed by web SDK) — not used by Happy
+
+**Verified 2026-08-23** against the installed `@elevenlabs/client` (`dist/lib.modern.js`): the transport resolves as `config.connectionType ?? (config.conversationToken ? "webrtc" : "websocket")`. Both of Happy's web paths — gated and BYO — pass a `conversationToken` (`RealtimeSession.ts`), so the web SDK already runs over LiveKit WebRTC, the same transport as native. The protocol below applies only to public-agent sessions started with a bare `agentId`, which no live Happy path does. Kept as reference in case such a path is added.
 
 The web SDK (`@elevenlabs/react`) connects via WebSocket to `{origin}/v1/convai/conversation?agent_id={agentId}`. This is the signaling layer that wraps the audio exchange for web clients (where raw LiveKit WebRTC may not be used).
 
@@ -188,13 +195,13 @@ Audio streamed back to user
 - Handles `sendContextualUpdate` and `sendUserMessage` text messages from the client
 - Emits mode-change and VAD-score events in the format the ElevenLabs SDK expects
 
-### 3. WebSocket signaling gateway (for web clients)
+### 3. WebSocket signaling gateway (for web clients) — not required
 
 **What**: A WebSocket server at `/v1/convai/conversation` that speaks the ElevenLabs web signaling protocol, translating between the web SDK's WebSocket frames and the LiveKit room.
 
 **Technology**: A Node.js or Python service. Acts as a bridge: the web SDK connects via WebSocket; the gateway joins the LiveKit room on the web client's behalf, proxying audio and signaling.
 
-**Work**: This is the hardest component because the protocol is proprietary. The approach:
+**Work**: None, as long as web clients keep receiving a `conversationToken` — the SDK then picks WebRTC and never opens the signaling WebSocket. If a token-less public-agent path is ever added, this gateway becomes necessary and the protocol has to be captured:
 
 1. **Capture the protocol**: Run a live ElevenLabs web session with WebSocket inspection (Chrome DevTools → Network → WS). Document every message type, direction, and payload shape.
 2. **Implement the gateway**: Translate each ElevenLabs WebSocket message type to/from the LiveKit room's data channels and audio tracks.
@@ -266,11 +273,11 @@ Pass the replacement server URLs when starting sessions:
 // Native: pass serverUrl to ElevenLabsProvider or useConversation
 serverUrl: 'wss://livekit.your-domain.com'
 
-// Web: pass origin to useConversation  
-origin: 'wss://voice.your-domain.com'
+// Web: pass livekitUrl to useConversation / startSession (WebRTC transport)
+livekitUrl: 'wss://livekit.your-domain.com'
 ```
 
-These are existing configuration options on the ElevenLabs SDKs. The exact mechanism: either pass them in the `useConversation()` config or in the `startSession()` options. Both paths are supported.
+Both are typed options on the installed SDKs: `serverUrl` on `ElevenLabsProvider`/`useConversation` in `@elevenlabs/react-native`, `livekitUrl` on `SessionConfig` in `@elevenlabs/client`. They can be passed in the `useConversation()` config or in the `startSession()` options.
 
 ### Happy app — TTS client (`apiTts.ts`)
 
@@ -323,7 +330,7 @@ The LiveKit server, voice agent, WS gateway, and REST API can all run on a singl
 
 ## Open questions to resolve during implementation
 
-**1. WebSocket signaling protocol fidelity.** The ElevenLabs web SDK speaks a proprietary WebSocket protocol. The exact message types and binary audio frame format need to be captured from a live session. If the protocol turns out to be too complex or changes between SDK versions, the fallback is a thin fork of `@elevenlabs/react` (~500 lines) that uses LiveKit's web SDK directly.
+**1. WebSocket signaling protocol fidelity — resolved 2026-08-23.** Happy's web clients connect over LiveKit WebRTC, not the proprietary WebSocket protocol, because both web paths supply a `conversationToken`. Web and native therefore need the same thing: a LiveKit server plus an agent in the room. The WebSocket protocol only becomes relevant if a token-less public-agent path is added.
 
 **2. Client tool invocation mechanism.** LiveKit Agents supports function calling, but the tool invocation messages must arrive in the exact format the ElevenLabs SDK's `clientTools` dispatch expects. This needs protocol-level testing: start a session, trigger a tool call, inspect the message format.
 
