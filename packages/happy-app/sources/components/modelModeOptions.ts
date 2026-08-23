@@ -73,13 +73,40 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
     ];
 }
 
+// A model key travels verbatim to the Claude CLI's `--model`, so the two kinds
+// of entry below mean different things over the wire: an alias hands the choice
+// of model to the CLI, a version id pins one.
+//
+// [LAW:one-source-of-truth] Which model the CLI resolves `opus` to is a fact the
+// CLI owns. An alias label that named a version ('opus 4.7') would be a second
+// copy of that fact, free to drift from it — and did, which is the bug this
+// list is here to stop repeating. Alias entries therefore name only a tier.
+const CLAUDE_MODEL_ALIASES: ModelMode[] = [
+    { key: 'default', name: 'default model', description: null },
+    { key: 'opus', name: 'opus', description: 'latest opus' },
+    { key: 'sonnet', name: 'sonnet', description: 'latest sonnet' },
+    { key: 'haiku', name: 'haiku', description: 'latest haiku' },
+];
+
+// Pinned entries: the key is an exact Anthropic model id, so the label restates
+// the key rather than predicting the CLI. Going stale here means the list is
+// incomplete, never that it lies.
+const CLAUDE_MODEL_VERSIONS: ModelMode[] = [
+    { key: 'claude-fable-5', name: 'fable 5', description: 'most capable' },
+    { key: 'claude-opus-5', name: 'opus 5', description: null },
+    { key: 'claude-opus-4-8', name: 'opus 4.8', description: null },
+    { key: 'claude-opus-4-7', name: 'opus 4.7', description: null },
+    { key: 'claude-opus-4-6', name: 'opus 4.6', description: null },
+    { key: 'claude-sonnet-5', name: 'sonnet 5', description: null },
+    { key: 'claude-sonnet-4-6', name: 'sonnet 4.6', description: null },
+    { key: 'claude-haiku-4-5', name: 'haiku 4.5', description: 'fastest' },
+];
+
+// Fallback only — `getAvailableModels` prefers the roster the CLI publishes in
+// session metadata, and reaches this list for local-mode sessions and CLIs too
+// old to publish one.
 export function getClaudeModelModes(): ModelMode[] {
-    return [
-        { key: 'default', name: 'default model', description: null },
-        { key: 'opus', name: 'opus 4.7', description: null },
-        { key: 'sonnet', name: 'sonnet 4.6', description: null },
-        { key: 'haiku', name: 'haiku 4.5', description: null },
-    ];
+    return [...CLAUDE_MODEL_ALIASES, ...CLAUDE_MODEL_VERSIONS];
 }
 
 export function getCodexModelModes(): ModelMode[] {
