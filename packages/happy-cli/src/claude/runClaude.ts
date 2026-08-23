@@ -9,6 +9,14 @@ import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
+import {
+    describeRejectedAttachments,
+    parseClaudeImageAttachment,
+    partitionAttachmentOutcomes,
+    unreadableAttachment,
+    type AttachmentOutcome,
+    type ClaudeImageAttachment,
+} from './claudeImageAttachment';
 import { hashObject } from '@/utils/deterministicJson';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
@@ -384,7 +392,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }));
 
     // Import MessageQueue2 and create message queue
-    const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject({
+    const messageQueue = new MessageQueue2<EnhancedMode, ClaudeImageAttachment>(mode => hashObject({
         isPlan: mode.permissionMode === 'plan',
         model: mode.model,
         fallbackModel: mode.fallbackModel,
@@ -418,18 +426,20 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     session.onFileEvent((fileEvent) => {
         const ev = fileEvent.content.data.ev;
         logger.debug(`[loop] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
-        const downloadPromise = (async (): Promise<{ data: Uint8Array; mimeType: string; name: string } | null> => {
+        const downloadPromise = (async (): Promise<AttachmentOutcome> => {
             try {
                 const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
                 if (!decrypted) {
                     logger.debug(`[loop] Failed to decrypt attachment: ${ev.name}`);
-                    return null;
+                    return unreadableAttachment(ev.name);
                 }
                 logger.debug(`[loop] Attachment decrypted: ${ev.name} (${decrypted.length} bytes)`);
-                return { data: decrypted, mimeType: ev.mimeType ?? 'image/jpeg', name: ev.name };
+                // The checkpoint: the app's claimed mimeType (ev.mimeType) stops here.
+                // Everything inland reads the media type proven from the bytes.
+                return parseClaudeImageAttachment(ev.name, decrypted);
             } catch (error) {
                 logger.debug(`[loop] Failed to download attachment: ${ev.name}`, { error });
-                return null;
+                return unreadableAttachment(ev.name);
             }
         })();
         session.trackAttachmentDownload(downloadPromise);
@@ -446,7 +456,17 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         // Claim every file attachment that arrived strictly before this text.
         // New file events from this point on belong to the next user message.
-        const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
+        const drained = await session.drainAttachmentsForUserMessage();
+        const { ready: attachmentsForThisMessage, rejected } = partitionAttachmentOutcomes(drained);
+
+        // The single place that knows an attachment the user sent will not be
+        // seen by Claude. Saying nothing here is how a paste appears to work and
+        // silently doesn't. [LAW:no-silent-failure]
+        if (rejected.length > 0) {
+            const notice = describeRejectedAttachments(rejected);
+            logger.debug(`[loop] ${notice}`);
+            session.sendSessionEvent({ type: 'message', message: notice });
+        }
 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;

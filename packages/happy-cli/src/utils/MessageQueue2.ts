@@ -1,22 +1,25 @@
 import { logger } from "@/ui/logger";
 
-export type PendingAttachment = { data: Uint8Array; mimeType: string; name: string };
-
-interface QueueItem<T> {
+interface QueueItem<T, A> {
     message: string;
     mode: T;
     modeHash: string;
     isolate?: boolean; // If true, this message must be processed alone
-    /** Decoded image attachments owned by *this* message (per-message ownership). */
-    attachments?: PendingAttachment[];
+    /** Attachments owned by *this* message (per-message ownership). */
+    attachments?: A[];
 }
 
 /**
  * A mode-aware message queue that stores messages with their modes.
  * Returns consistent batches of messages with the same mode.
+ *
+ * `A` is the attachment payload the queue ferries without inspecting. It
+ * defaults to `never`, so an agent that has no attachment pipeline cannot be
+ * handed one by mistake — only the runners that declare a payload type (today,
+ * Claude) can push attachments at all. [LAW:types-are-the-program]
  */
-export class MessageQueue2<T> {
-    public queue: QueueItem<T>[] = []; // Made public for testing
+export class MessageQueue2<T, A = never> {
+    public queue: QueueItem<T, A>[] = []; // Made public for testing
     private waiter: ((hasMessages: boolean) => void) | null = null;
     private closed = false;
     private onMessageHandler: ((message: string, mode: T) => void) | null = null;
@@ -42,7 +45,7 @@ export class MessageQueue2<T> {
      * Push a message to the queue with a mode and an optional list of
      * attachments that travel with this message.
      */
-    push(message: string, mode: T, attachments?: PendingAttachment[]): void {
+    push(message: string, mode: T, attachments?: A[]): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -114,7 +117,7 @@ export class MessageQueue2<T> {
      * Clears any pending messages and ensures this message is never batched with others.
      * Used for special commands that require dedicated processing.
      */
-    pushIsolateAndClear(message: string, mode: T, attachments?: PendingAttachment[]): void {
+    pushIsolateAndClear(message: string, mode: T, attachments?: A[]): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -228,7 +231,7 @@ export class MessageQueue2<T> {
      * Wait for messages and return all messages with the same mode as a single string
      * Returns { message: string, mode: T } or null if aborted/closed
      */
-    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, attachments?: PendingAttachment[] } | null> {
+    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, attachments?: A[] } | null> {
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
             return this.collectBatch();
@@ -252,14 +255,14 @@ export class MessageQueue2<T> {
     /**
      * Collect a batch of messages with the same mode, respecting isolation requirements
      */
-    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, attachments?: PendingAttachment[] } | null {
+    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, attachments?: A[] } | null {
         if (this.queue.length === 0) {
             return null;
         }
 
         const firstItem = this.queue[0];
         const sameModeMessages: string[] = [];
-        const collectedAttachments: PendingAttachment[] = [];
+        const collectedAttachments: A[] = [];
         let mode = firstItem.mode;
         let isolate = firstItem.isolate ?? false;
         const targetModeHash = firstItem.modeHash;

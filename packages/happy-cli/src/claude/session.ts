@@ -1,6 +1,6 @@
 import { ApiClient, ApiSessionClient } from "@/lib";
 import { MessageQueue2 } from "@/utils/MessageQueue2";
-import { EnhancedMode } from "./loop";
+import { EnhancedMode, ClaudeMessageQueue } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import type { SandboxConfig } from "@/persistence";
@@ -10,7 +10,7 @@ export class Session {
     readonly logPath: string;
     readonly api: ApiClient;
     readonly client: ApiSessionClient;
-    readonly queue: MessageQueue2<EnhancedMode>;
+    readonly queue: ClaudeMessageQueue;
     readonly claudeEnvVars?: Record<string, string>;
     claudeArgs?: string[];  // Made mutable to allow filtering
     readonly mcpServers: Record<string, any>;
@@ -41,7 +41,7 @@ export class Session {
         claudeEnvVars?: Record<string, string>,
         claudeArgs?: string[],
         mcpServers: Record<string, any>,
-        messageQueue: MessageQueue2<EnhancedMode>,
+        messageQueue: ClaudeMessageQueue,
         onModeChange: (mode: 'local' | 'remote') => void,
         allowedTools?: string[],
         sandboxConfig?: SandboxConfig,
