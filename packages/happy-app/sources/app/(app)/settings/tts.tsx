@@ -36,11 +36,31 @@ const AUTO_SPEAK_OPTIONS = [
     },
 ] as const;
 
+// [LAW:one-type-per-behavior] Same cutter as the auto-speak rows: the vendors differ only in the
+// data below, so a third vendor is a row here rather than another copy of the same JSX.
+const PROVIDER_OPTIONS = [
+    {
+        value: 'elevenlabs',
+        icon: 'sparkles-outline',
+        titleKey: 'settingsTts.providerElevenLabsLabel',
+        subtitleKey: 'settingsTts.providerElevenLabsSubtitle',
+    },
+    {
+        value: 'openai',
+        icon: 'cloud-outline',
+        titleKey: 'settingsTts.providerOpenAiLabel',
+        subtitleKey: 'settingsTts.providerOpenAiSubtitle',
+    },
+] as const;
+
 export default React.memo(function TtsSettingsScreen() {
     const [ttsEnabled, setTtsEnabled] = useSettingMutable('ttsEnabled');
     const [ttsAutoSpeak, setTtsAutoSpeak] = useSettingMutable('ttsAutoSpeak');
+    const [ttsProvider, setTtsProvider] = useSettingMutable('ttsProvider');
     const [ttsVoiceId, setTtsVoiceId] = useSettingMutable('ttsVoiceId');
     const [ttsElevenLabsApiKey, setTtsElevenLabsApiKey] = useSettingMutable('ttsElevenLabsApiKey');
+    const [ttsOpenAiVoice, setTtsOpenAiVoice] = useSettingMutable('ttsOpenAiVoice');
+    const [ttsOpenAiApiKey, setTtsOpenAiApiKey] = useSettingMutable('ttsOpenAiApiKey');
     const [ttsLlmBaseUrl, setTtsLlmBaseUrl] = useSettingMutable('ttsLlmBaseUrl');
     const [ttsLlmApiKey, setTtsLlmApiKey] = useSettingMutable('ttsLlmApiKey');
     const [ttsLlmModel, setTtsLlmModel] = useSettingMutable('ttsLlmModel');
@@ -99,6 +119,58 @@ export default React.memo(function TtsSettingsScreen() {
                         onPress={() => setTtsAutoSpeak(value)}
                     />
                 ))}
+            </ItemGroup>
+
+            <ItemGroup
+                title={t('settingsTts.providerTitle')}
+                footer={t('settingsTts.providerFooter')}
+            >
+                {PROVIDER_OPTIONS.map(({ value, icon, titleKey, subtitleKey }) => (
+                    <Item
+                        key={value}
+                        title={t(titleKey)}
+                        subtitle={t(subtitleKey)}
+                        subtitleLines={0}
+                        icon={<Ionicons name={icon} size={29} color="#007AFF" />}
+                        disabled={!ttsEnabled}
+                        selected={ttsProvider === value}
+                        onPress={() => setTtsProvider(value)}
+                    />
+                ))}
+            </ItemGroup>
+
+            <ItemGroup
+                title={t('settingsTts.openAiTitle')}
+                footer={t('settingsTts.openAiFooter')}
+            >
+                <Item
+                    title={t('settingsTts.openAiVoiceLabel')}
+                    subtitle={ttsOpenAiVoice ?? t('settingsTts.openAiVoiceSubtitleNotSet')}
+                    icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
+                    onPress={() => promptString(
+                        t('settingsTts.openAiVoiceLabel'),
+                        t('settingsTts.openAiVoicePrompt'),
+                        ttsOpenAiVoice,
+                        t('settingsTts.openAiVoicePlaceholder'),
+                        false,
+                        setTtsOpenAiVoice,
+                    )}
+                />
+                <Item
+                    title={t('settingsTts.openAiKeyLabel')}
+                    subtitle={ttsOpenAiApiKey
+                        ? t('settingsTts.openAiKeySubtitleSet')
+                        : t('settingsTts.openAiKeySubtitleNotSet')}
+                    icon={<Ionicons name="key-outline" size={29} color="#FF9500" />}
+                    onPress={() => promptString(
+                        t('settingsTts.openAiKeyLabel'),
+                        t('settingsTts.openAiKeyPrompt'),
+                        ttsOpenAiApiKey,
+                        t('settingsTts.openAiKeyPlaceholder'),
+                        true,
+                        setTtsOpenAiApiKey,
+                    )}
+                />
             </ItemGroup>
 
             <ItemGroup

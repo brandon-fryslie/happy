@@ -206,8 +206,14 @@ describe('settings', () => {
                 voiceBypassToken: false,
                 ttsEnabled: false,
                 ttsAutoSpeak: 'off',
+                // Defaults to the vendor that shipped first, so an existing user's stored
+                // ElevenLabs voice and key keep working across the 4 -> 5 bump.
+                ttsProvider: 'elevenlabs',
                 ttsVoiceId: null,
                 ttsElevenLabsApiKey: null,
+                ttsOpenAiVoice: null,
+                ttsOpenAiApiKey: null,
+                ttsSpeechModel: null,
                 ttsLlmBaseUrl: null,
                 ttsLlmApiKey: null,
                 ttsLlmModel: null,

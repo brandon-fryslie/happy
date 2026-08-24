@@ -5,6 +5,7 @@ import { storage } from '@/sync/storage';
 import { setTtsPosition, getTtsPosition, clearTtsPosition } from '@/sync/persistence';
 import { summarizeMessages } from '@/sync/llm/apiSummarize';
 import { synthesizeSpeech } from '@/sync/llm/apiTts';
+import { resolveTtsVoiceAndModel, ttsProviderLabel, type TtsProvider } from '@/sync/llm/ttsProviders';
 import { HappyError } from '@/utils/errors';
 import { AsyncLock } from '@/utils/lock';
 import type { Message } from '@/sync/typesMessage';
@@ -33,8 +34,6 @@ interface AbortToken {
     aborted: boolean;
     wakeup: () => void;
 }
-
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // Rachel — sensible ElevenLabs default.
 
 export function useTtsPlayer(sessionId: string): TtsPlayer {
     const [isPlaying, setIsPlaying] = React.useState(false);
@@ -112,8 +111,10 @@ export function useTtsPlayer(sessionId: string): TtsPlayer {
                 if (token.aborted) return;
 
                 const audio = await synthesizeSpeech({
-                    apiKey: config.elevenLabsKey,
+                    provider: config.provider,
+                    apiKey: config.speechKey,
                     voiceId: config.voiceId,
+                    modelId: config.speechModel,
                     text: summary,
                 });
                 if (token.aborted) return;
@@ -176,17 +177,38 @@ interface ResolvedConfig {
     llmBaseUrl: string;
     llmApiKey: string;
     llmModel: string;
-    elevenLabsKey: string;
+    provider: TtsProvider;
+    speechKey: string;
     voiceId: string;
+    speechModel: string;
 }
+
+// Where each vendor's speech credential comes from, including what it falls back to.
+//
+// [LAW:one-source-of-truth] Each entry names one canonical "user's key for this vendor". ElevenLabs
+// falls back to the BYO voice key and OpenAI to the summarization key, so a user who already gave us
+// the same credential elsewhere is never asked to paste it twice.
+const SPEECH_KEY_SOURCES: Record<TtsProvider, (s: ReturnType<typeof storage.getState>['settings']) => string | undefined> = {
+    elevenlabs: (s) => (s.ttsElevenLabsApiKey ?? s.voiceCustomElevenLabsApiKey)?.trim(),
+    openai: (s) => (s.ttsOpenAiApiKey ?? s.ttsLlmApiKey)?.trim(),
+};
+
+const SPEECH_VOICE_SOURCES: Record<TtsProvider, (s: ReturnType<typeof storage.getState>['settings']) => string | null> = {
+    elevenlabs: (s) => s.ttsVoiceId,
+    openai: (s) => s.ttsOpenAiVoice,
+};
 
 function resolveConfig(settings: ReturnType<typeof storage.getState>['settings']): ResolvedConfig {
     const llmBaseUrl = settings.ttsLlmBaseUrl?.trim();
     const llmModel = settings.ttsLlmModel?.trim();
-    // [LAW:one-source-of-truth] One canonical "user's ElevenLabs key": the BYO voice key, with the
-    // TTS-specific override taking precedence when set.
-    const elevenLabsKey = (settings.ttsElevenLabsApiKey ?? settings.voiceCustomElevenLabsApiKey)?.trim();
-    const voiceId = settings.ttsVoiceId?.trim() || DEFAULT_VOICE_ID;
+    const provider = settings.ttsProvider;
+    const speechKey = SPEECH_KEY_SOURCES[provider](settings);
+    // Defaults are provider-scoped, so the returned voice always belongs to the chosen vendor.
+    const { voiceId, modelId: speechModel } = resolveTtsVoiceAndModel(
+        provider,
+        SPEECH_VOICE_SOURCES[provider](settings),
+        settings.ttsSpeechModel,
+    );
 
     if (!llmBaseUrl) {
         throw new HappyError('Configure the LLM Base URL in TTS Settings to enable summarize-and-speak.', false);
@@ -194,16 +216,21 @@ function resolveConfig(settings: ReturnType<typeof storage.getState>['settings']
     if (!llmModel) {
         throw new HappyError('Configure the LLM Model in TTS Settings to enable summarize-and-speak.', false);
     }
-    if (!elevenLabsKey) {
-        throw new HappyError('Add an ElevenLabs API key in TTS Settings to enable summarize-and-speak.', false);
+    if (!speechKey) {
+        throw new HappyError(
+            `Add a ${ttsProviderLabel(provider)} API key in Speak Sessions settings to enable summarize-and-speak.`,
+            false,
+        );
     }
 
     return {
         llmBaseUrl,
         llmApiKey: settings.ttsLlmApiKey?.trim() ?? '',
         llmModel,
-        elevenLabsKey,
+        provider,
+        speechKey,
         voiceId,
+        speechModel,
     };
 }
 
