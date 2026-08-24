@@ -1,5 +1,6 @@
 import { setAudioModeAsync } from 'expo-audio';
 import { AsyncLock } from '@/utils/lock';
+import { log } from '@/log';
 import { deriveAudioMode, type AudioClaim } from './audioSessionMode';
 
 // [LAW:no-shared-mutable-globals] The iOS/Android audio session is process-wide mutable state.
@@ -40,7 +41,12 @@ async function apply(): Promise<void> {
     // speech silently does not play — precisely the failure this module exists to end. Swallowing
     // it here would recreate the bug one layer down.
     await lock.inLock(async () => {
-        await setAudioModeAsync(deriveAudioMode(activeClaims));
+        const mode = deriveAudioMode(activeClaims);
+        // [LAW:no-silent-failure] This session's failure mode is silence, which is indistinguishable
+        // from "nothing to say". Recording what was actually written — and on whose behalf — is the
+        // only way a missing voice can be traced back to a session that was never configured.
+        log.log(`[audio] claims=[${[...activeClaims].join(',')}] background=${mode.shouldPlayInBackground} recording=${mode.allowsRecording}`);
+        await setAudioModeAsync(mode);
     });
 }
 
