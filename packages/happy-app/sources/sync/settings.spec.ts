@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { settingsParse, applySettings, settingsDefaults, type Settings } from './settings';
+import { settingsParse, applySettings, settingsDefaults, SUPPORTED_SCHEMA_VERSION, type Settings } from './settings';
 
 describe('settings', () => {
     describe('settingsParse', () => {
@@ -174,7 +174,12 @@ describe('settings', () => {
     describe('settingsDefaults', () => {
         it('should have correct default values', () => {
             expect(settingsDefaults).toEqual({
-                schemaVersion: 3,
+                // [LAW:one-source-of-truth] Derived, not a literal: a hardcoded number here is a
+                // second copy of the version that has to be hand-edited on every schema bump, and
+                // fails the build when someone forgets. What this test is actually asserting is
+                // that the defaults carry the supported version, not that the version is any
+                // particular number.
+                schemaVersion: SUPPORTED_SCHEMA_VERSION,
                 viewInline: false,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -200,7 +205,7 @@ describe('settings', () => {
                 voiceCustomElevenLabsApiKey: null,
                 voiceBypassToken: false,
                 ttsEnabled: false,
-                ttsAutoMode: false,
+                ttsAutoSpeak: 'off',
                 ttsVoiceId: null,
                 ttsElevenLabsApiKey: null,
                 ttsLlmBaseUrl: null,

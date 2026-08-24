@@ -5,7 +5,8 @@ import * as z from 'zod';
 //
 
 // Current schema version for backward compatibility
-export const SUPPORTED_SCHEMA_VERSION = 3;
+// Bumped 3 -> 4 when ttsAutoMode (boolean) became ttsAutoSpeak (three-state enum).
+export const SUPPORTED_SCHEMA_VERSION = 4;
 
 export const SettingsSchema = z.object({
     // Schema version for compatibility detection
@@ -39,7 +40,12 @@ export const SettingsSchema = z.object({
     // [LAW:one-source-of-truth] TTS feature: on-device summarize+speak using user-supplied LLM/TTS endpoints.
     // ElevenLabs key falls back to voiceCustomElevenLabsApiKey when null — single canonical "user's ElevenLabs key".
     ttsEnabled: z.boolean().describe('Enable summarize-and-speak TTS feature'),
-    ttsAutoMode: z.boolean().describe('Auto-speak new agent responses when in foreground'),
+    // [LAW:types-are-the-program] Three values because the domain has exactly three states. The
+    // obvious alternative — keeping the boolean and adding a `ttsHandsFree` sibling — would make
+    // four states representable, one of which ("hands-free but auto-speak off") means nothing.
+    // 'foreground' speaks only while the user is looking at the app; 'hands-free' holds an audio
+    // session so speech continues with the app backgrounded or the screen locked.
+    ttsAutoSpeak: z.enum(['off', 'foreground', 'hands-free']).describe('When to auto-speak new agent responses'),
     ttsVoiceId: z.string().nullable().describe('ElevenLabs voice ID for TTS (null = built-in default)'),
     ttsElevenLabsApiKey: z.string().nullable().describe('ElevenLabs API key for TTS (falls back to voiceCustomElevenLabsApiKey when null)'),
     ttsLlmBaseUrl: z.string().nullable().describe('OpenAI-compatible base URL for summarization (e.g. https://api.openai.com/v1, http://ollama.local:11434/v1)'),
@@ -121,7 +127,7 @@ export const settingsDefaults: Settings = {
     voiceBypassToken: false,
 
     ttsEnabled: false,
-    ttsAutoMode: false,
+    ttsAutoSpeak: 'off' as const,
     ttsVoiceId: null,
     ttsElevenLabsApiKey: null,
     ttsLlmBaseUrl: null,
