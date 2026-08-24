@@ -29,19 +29,12 @@ export async function requestMicrophonePermission(): Promise<MicrophonePermissio
       }
     } else {
       // iOS and Android: Use expo-audio (SDK 52+)
+      // [LAW:decomposition] This function requests permission, full stop. It used to also
+      // configure the audio session — an "and" in its purpose — which made the session's
+      // config an invisible side effect of asking for the mic. Session ownership now lives in
+      // @/audio/audioSession; callers acquire the claim they need.
       const result = await AudioModule.requestRecordingPermissionsAsync();
-
-      if (result.granted) {
-        // Configure audio mode for recording
-        await AudioModule.setAudioModeAsync({
-          allowsRecording: true,
-          playsInSilentMode: true,
-        });
-
-        return { granted: true, canAskAgain: result.canAskAgain };
-      }
-
-      return { granted: false, canAskAgain: result.canAskAgain };
+      return { granted: result.granted, canAskAgain: result.canAskAgain };
     }
   } catch (error) {
     console.error('Error requesting microphone permission:', error);
