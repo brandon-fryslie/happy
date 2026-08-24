@@ -5,6 +5,7 @@ import { Modal } from '@/modal';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { t } from '@/text';
 import { requestMicrophonePermission, showMicrophonePermissionDeniedAlert } from '@/utils/microphonePermissions';
+import { acquireAudioSession, releaseAudioSession } from '@/audio/audioSession';
 import { storage } from '@/sync/storage';
 import {
     getVoiceMessageCount,
@@ -45,6 +46,10 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         showMicrophonePermissionDeniedAlert(permissionResult.canAskAgain);
         return null;
     }
+
+    // Opens the session for duplex audio. Previously this happened inside
+    // requestMicrophonePermission; it is stated here because it is this function's need.
+    await acquireAudioSession('voice-conversation');
 
     try {
         const credentials = await TokenStorage.getCredentials();
@@ -164,10 +169,23 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         voiceSessionStarted = false;
         Modal.alert(t('common.error'), t('errors.voiceServiceUnavailable'));
         return null;
+    } finally {
+        // [LAW:no-ambient-temporal-coupling] One release point for the many `return null` exits
+        // above. The claim is held exactly while a conversation is live, and `voiceSessionStarted`
+        // is the state that says whether one is — so every path that failed to start one gives
+        // the session back here instead of leaking it until the next app launch.
+        if (!voiceSessionStarted) {
+            await releaseAudioSession('voice-conversation');
+        }
     }
 }
 
 export async function stopRealtimeSession() {
+    // Released before the guard below, not inside it: releasing a claim that is not held is a
+    // no-op on the set, so this runs on every teardown path rather than only the one where a
+    // voiceSession object happens to exist.
+    await releaseAudioSession('voice-conversation');
+
     if (!voiceSession) {
         return;
     }
