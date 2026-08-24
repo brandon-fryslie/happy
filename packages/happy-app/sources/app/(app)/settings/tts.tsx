@@ -12,9 +12,33 @@ import { t } from '@/text';
 // or "set/not set" subtitle changes from settings values. No conditional render branches that drop
 // rows.
 
+// [LAW:one-type-per-behavior] The three auto-speak rows behave identically — one cutter, three
+// cookies. They differ only in the data below, so adding a fourth mode later is a row here rather
+// than a fourth copy of the same JSX.
+const AUTO_SPEAK_OPTIONS = [
+    {
+        value: 'off',
+        icon: 'close-circle-outline',
+        titleKey: 'settingsTts.autoSpeakOffLabel',
+        subtitleKey: 'settingsTts.autoSpeakOffSubtitle',
+    },
+    {
+        value: 'foreground',
+        icon: 'phone-portrait-outline',
+        titleKey: 'settingsTts.autoSpeakForegroundLabel',
+        subtitleKey: 'settingsTts.autoSpeakForegroundSubtitle',
+    },
+    {
+        value: 'hands-free',
+        icon: 'headset-outline',
+        titleKey: 'settingsTts.autoSpeakHandsFreeLabel',
+        subtitleKey: 'settingsTts.autoSpeakHandsFreeSubtitle',
+    },
+] as const;
+
 export default React.memo(function TtsSettingsScreen() {
     const [ttsEnabled, setTtsEnabled] = useSettingMutable('ttsEnabled');
-    const [ttsAutoMode, setTtsAutoMode] = useSettingMutable('ttsAutoMode');
+    const [ttsAutoSpeak, setTtsAutoSpeak] = useSettingMutable('ttsAutoSpeak');
     const [ttsVoiceId, setTtsVoiceId] = useSettingMutable('ttsVoiceId');
     const [ttsElevenLabsApiKey, setTtsElevenLabsApiKey] = useSettingMutable('ttsElevenLabsApiKey');
     const [ttsLlmBaseUrl, setTtsLlmBaseUrl] = useSettingMutable('ttsLlmBaseUrl');
@@ -57,20 +81,24 @@ export default React.memo(function TtsSettingsScreen() {
                         />
                     }
                 />
-                <Item
-                    title={t('settingsTts.autoModeLabel')}
-                    subtitle={t('settingsTts.autoModeSubtitle')}
-                    subtitleLines={0}
-                    icon={<Ionicons name="play-circle-outline" size={29} color="#007AFF" />}
-                    disabled={!ttsEnabled}
-                    rightElement={
-                        <Switch
-                            value={ttsAutoMode}
-                            onValueChange={setTtsAutoMode}
-                            disabled={!ttsEnabled}
-                        />
-                    }
-                />
+            </ItemGroup>
+
+            <ItemGroup
+                title={t('settingsTts.autoSpeakTitle')}
+                footer={t('settingsTts.autoSpeakFooter')}
+            >
+                {AUTO_SPEAK_OPTIONS.map(({ value, icon, titleKey, subtitleKey }) => (
+                    <Item
+                        key={value}
+                        title={t(titleKey)}
+                        subtitle={t(subtitleKey)}
+                        subtitleLines={0}
+                        icon={<Ionicons name={icon} size={29} color="#007AFF" />}
+                        disabled={!ttsEnabled}
+                        selected={ttsAutoSpeak === value}
+                        onPress={() => setTtsAutoSpeak(value)}
+                    />
+                ))}
             </ItemGroup>
 
             <ItemGroup
