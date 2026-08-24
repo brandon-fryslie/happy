@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { useSession, useSessionMessages, useSetting } from '@/sync/storage';
 import type { TtsPlayer } from './useTtsPlayer';
 import { acquireAudioSession, releaseAudioSession } from '@/audio/audioSession';
+import { log } from '@/log';
 
 // [LAW:dataflow-not-control-flow] The decision to fire is a pure function of (settings, last
 // agent-text id, thinking state, app foreground, cooldown elapsed). The effect's body always runs
@@ -92,15 +93,22 @@ export function useTtsAutoMode(sessionId: string, player: TtsPlayer): void {
             const alreadyBusy = player.isPlaying || player.isLoading;
 
             if (!foregroundSatisfied || !cooldownElapsed || alreadyBusy) {
+                // [LAW:no-silent-failure] A suppressed fire and a broken feature sound exactly alike.
+                // Naming which gate closed is what separates "working as designed" from "bug".
+                log.log(`[tts-auto] suppressed mode=${autoSpeak} foreground=${foregroundSatisfied} cooldown=${cooldownElapsed} idle=${!alreadyBusy}`);
                 return;
             }
 
             lastFiredAtRef.current = now;
             lastTriggeredAgentIdRef.current = latestAgentId;
-            // Errors here surface via Modal in the player's HappyError path if the consumer wraps
-            // play with useHappyAction. Bare promise rejection from auto-mode is silently dropped
-            // — auto fires shouldn't pop modals on background activity.
-            player.play('continue').catch(() => { /* swallow */ });
+            log.log(`[tts-auto] firing mode=${autoSpeak} appState=${AppState.currentState} message=${latestAgentId}`);
+            // [LAW:no-silent-failure] Auto-fire deliberately does not pop a modal — the user may not
+            // be looking at the screen — but the failure still has to land somewhere. Hands-free runs
+            // summarize → synthesize → write → play while backgrounded, where every network step can
+            // fail, and each failure is otherwise indistinguishable from having nothing to say.
+            player.play('continue').catch((e) => {
+                log.log(`[tts-auto] play failed mode=${autoSpeak}: ${e instanceof Error ? e.message : String(e)}`);
+            });
         }, DEBOUNCE_MS);
 
         return () => {
