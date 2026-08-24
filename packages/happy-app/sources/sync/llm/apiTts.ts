@@ -1,57 +1,51 @@
 import { HappyError } from '@/utils/errors';
+import { buildTtsRequest, ttsProviderLabel, type TtsProvider } from './ttsProviders';
 
-// [LAW:dataflow-not-control-flow] Single unconditional request path; failure surfaces as HappyError.
+// [LAW:dataflow-not-control-flow] Single unconditional request path. The vendor changes what is in
+// the request, never which operations run — that difference is carried by the provider table in
+// ./ttsProviders, not by branching here.
 //
-// Calls ElevenLabs text-to-speech streaming endpoint and returns the full mp3 byte buffer. The
-// caller is responsible for writing it to a temp file and playing it. We don't actually stream the
-// audio while it's downloading — for short summaries the overhead of true streaming is not worth
-// the complexity.
-
-const ELEVENLABS_BASE = 'https://api.elevenlabs.io';
-const DEFAULT_MODEL_ID = 'eleven_turbo_v2_5';
+// [LAW:effects-at-boundaries] This module is the edge: it performs the HTTP call and nothing else.
+// Deciding what to send is pure and lives in ./ttsProviders.
+//
+// Returns the full mp3 byte buffer; the caller writes it to a temp file and plays it. We don't
+// stream while downloading — for short summaries the overhead of true streaming isn't worth it.
 
 export interface SynthesizeSpeechOptions {
+    provider: TtsProvider;
     apiKey: string;
     voiceId: string;
+    modelId: string;
     text: string;
-    modelId?: string;
 }
 
 export async function synthesizeSpeech(opts: SynthesizeSpeechOptions): Promise<ArrayBuffer> {
-    const { apiKey, voiceId, text, modelId = DEFAULT_MODEL_ID } = opts;
-
-    const url = `${ELEVENLABS_BASE}/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream`;
+    const { provider, apiKey, voiceId, modelId, text } = opts;
+    const label = ttsProviderLabel(provider);
+    const request = buildTtsRequest(provider, apiKey, voiceId, modelId, text);
 
     let response: Response;
     try {
-        response = await fetch(url, {
+        response = await fetch(request.url, {
             method: 'POST',
-            headers: {
-                'xi-api-key': apiKey,
-                'Content-Type': 'application/json',
-                'Accept': 'audio/mpeg',
-            },
-            body: JSON.stringify({
-                text,
-                model_id: modelId,
-                output_format: 'mp3_44100_128',
-            }),
+            headers: request.headers,
+            body: request.body,
         });
-    } catch (err) {
-        throw new HappyError(
-            'Could not reach ElevenLabs. Check your network connection.',
-            true,
-        );
+    } catch {
+        throw new HappyError(`Could not reach ${label}. Check your network connection.`, true);
     }
 
     if (!response.ok) {
+        // [LAW:no-silent-failure] Carry the vendor's own explanation through. A bare status leaves
+        // the user guessing between a bad key, an unknown voice, and an exhausted quota — three
+        // different fixes that otherwise look identical.
         let detail = '';
         try {
             const body = await response.text();
             if (body) detail = `: ${body.slice(0, 200)}`;
-        } catch { /* ignore */ }
+        } catch { /* body already consumed or unreadable */ }
         throw new HappyError(
-            `ElevenLabs TTS request failed (${response.status})${detail}`,
+            `${label} TTS request failed (${response.status})${detail}`,
             response.status >= 500,
         );
     }
@@ -59,6 +53,6 @@ export async function synthesizeSpeech(opts: SynthesizeSpeechOptions): Promise<A
     try {
         return await response.arrayBuffer();
     } catch {
-        throw new HappyError('Failed to read audio response from ElevenLabs', true);
+        throw new HappyError(`Failed to read audio response from ${label}`, true);
     }
 }

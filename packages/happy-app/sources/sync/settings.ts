@@ -6,7 +6,8 @@ import * as z from 'zod';
 
 // Current schema version for backward compatibility
 // Bumped 3 -> 4 when ttsAutoMode (boolean) became ttsAutoSpeak (three-state enum).
-export const SUPPORTED_SCHEMA_VERSION = 4;
+// Bumped 4 -> 5 when speech synthesis gained a vendor (ttsProvider) instead of assuming ElevenLabs.
+export const SUPPORTED_SCHEMA_VERSION = 5;
 
 export const SettingsSchema = z.object({
     // Schema version for compatibility detection
@@ -46,8 +47,19 @@ export const SettingsSchema = z.object({
     // 'foreground' speaks only while the user is looking at the app; 'hands-free' holds an audio
     // session so speech continues with the app backgrounded or the screen locked.
     ttsAutoSpeak: z.enum(['off', 'foreground', 'hands-free']).describe('When to auto-speak new agent responses'),
+    // [LAW:types-are-the-program] The vendor is named, not inferred from a base URL. A URL would
+    // admit endpoints whose auth scheme and body shape we cannot know, leaving the caller to guess
+    // which request to build; naming the vendor deletes the guess.
+    ttsProvider: z.enum(['elevenlabs', 'openai']).describe('Speech synthesis vendor'),
+    // Per-vendor voice and key. Kept as separate fields rather than one shared pair because a voice
+    // is only meaningful to the vendor that defines it — 'alloy' is not an ElevenLabs voice and a
+    // Rachel UUID is not an OpenAI one. Separate fields make that mismatch unrepresentable, and
+    // switching vendors back and forth preserves both configurations.
     ttsVoiceId: z.string().nullable().describe('ElevenLabs voice ID for TTS (null = built-in default)'),
     ttsElevenLabsApiKey: z.string().nullable().describe('ElevenLabs API key for TTS (falls back to voiceCustomElevenLabsApiKey when null)'),
+    ttsOpenAiVoice: z.string().nullable().describe('OpenAI TTS voice name, e.g. alloy or nova (null = built-in default)'),
+    ttsOpenAiApiKey: z.string().nullable().describe('OpenAI API key for TTS (falls back to ttsLlmApiKey when null)'),
+    ttsSpeechModel: z.string().nullable().describe('Speech synthesis model override (null = the vendor default)'),
     ttsLlmBaseUrl: z.string().nullable().describe('OpenAI-compatible base URL for summarization (e.g. https://api.openai.com/v1, http://ollama.local:11434/v1)'),
     ttsLlmApiKey: z.string().nullable().describe('OpenAI-compatible API key for summarization (may be empty for local Ollama)'),
     ttsLlmModel: z.string().nullable().describe('OpenAI-compatible model name (e.g. gpt-4o-mini, llama3.1:8b)'),
@@ -128,8 +140,12 @@ export const settingsDefaults: Settings = {
 
     ttsEnabled: false,
     ttsAutoSpeak: 'off' as const,
+    ttsProvider: 'elevenlabs' as const,
     ttsVoiceId: null,
     ttsElevenLabsApiKey: null,
+    ttsOpenAiVoice: null,
+    ttsOpenAiApiKey: null,
+    ttsSpeechModel: null,
     ttsLlmBaseUrl: null,
     ttsLlmApiKey: null,
     ttsLlmModel: null,
