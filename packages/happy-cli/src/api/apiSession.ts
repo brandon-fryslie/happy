@@ -6,8 +6,8 @@ import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt, encryptBlob 
 import { backoff, delay } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
-import { parseClaudeImageAttachment, type AttachmentOutcome } from '@/claude/claudeImageAttachment';
-import { imageDimensionsOf } from '@/claude/utils/imageDimensions';
+import { parseImageAttachment, type AttachmentOutcome } from '@/attachments/imageAttachment';
+import { imageDimensionsOf } from '@/attachments/imageDimensions';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { deriveKey } from '@/utils/deriveKey';
@@ -405,7 +405,7 @@ export class ApiSessionClient extends EventEmitter {
 
     private async publishToolResultImage(image: ToolResultImage): Promise<void> {
         const bytes = new Uint8Array(Buffer.from(image.base64, 'base64'));
-        const outcome = parseClaudeImageAttachment('tool-result', bytes);
+        const outcome = parseImageAttachment('tool-result', bytes);
         if (outcome.kind === 'rejected') {
             logger.debug(`[ATTACHMENT] ERROR: tool-result image rejected (${outcome.rejection.reason}), not published`);
             return;

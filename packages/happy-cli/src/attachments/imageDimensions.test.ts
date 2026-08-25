@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { imageDimensionsOf } from './imageDimensions';
-import type { ClaudeImageAttachment, ClaudeImageMediaType } from '@/claude/claudeImageAttachment';
+import type { ImageAttachment, ImageMediaType } from '@/attachments/imageAttachment';
 
-function attachment(mediaType: ClaudeImageMediaType, data: Uint8Array): ClaudeImageAttachment {
+function attachment(mediaType: ImageMediaType, data: Uint8Array): ImageAttachment {
     return { name: 'fixture', data, mediaType };
 }
 

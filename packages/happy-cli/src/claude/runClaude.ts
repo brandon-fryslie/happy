@@ -12,12 +12,12 @@ import { isClaudeEffort, type ClaudeEffort } from './sdk/types';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import {
     describeRejectedAttachments,
-    parseClaudeImageAttachment,
+    parseImageAttachment,
     partitionAttachmentOutcomes,
     unreadableAttachment,
     type AttachmentOutcome,
-    type ClaudeImageAttachment,
-} from './claudeImageAttachment';
+    type ImageAttachment,
+} from '@/attachments/imageAttachment';
 import { hashObject } from '@/utils/deterministicJson';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
@@ -393,7 +393,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }));
 
     // Import MessageQueue2 and create message queue
-    const messageQueue = new MessageQueue2<EnhancedMode, ClaudeImageAttachment>(mode => hashObject({
+    const messageQueue = new MessageQueue2<EnhancedMode, ImageAttachment>(mode => hashObject({
         isPlan: mode.permissionMode === 'plan',
         model: mode.model,
         fallbackModel: mode.fallbackModel,
@@ -437,7 +437,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 logger.debug(`[loop] Attachment decrypted: ${ev.name} (${decrypted.length} bytes)`);
                 // The checkpoint: the app's claimed mimeType (ev.mimeType) stops here.
                 // Everything inland reads the media type proven from the bytes.
-                return parseClaudeImageAttachment(ev.name, decrypted);
+                return parseImageAttachment(ev.name, decrypted);
             } catch (error) {
                 logger.debug(`[loop] Failed to download attachment: ${ev.name}`, { error });
                 return unreadableAttachment(ev.name);
@@ -464,7 +464,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // seen by Claude. Saying nothing here is how a paste appears to work and
         // silently doesn't. [LAW:no-silent-failure]
         if (rejected.length > 0) {
-            const notice = describeRejectedAttachments(rejected);
+            const notice = describeRejectedAttachments(rejected, 'Claude');
             logger.debug(`[loop] ${notice}`);
             session.sendSessionEvent({ type: 'message', message: notice });
         }
