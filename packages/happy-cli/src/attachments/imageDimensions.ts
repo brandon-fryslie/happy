@@ -3,15 +3,15 @@
  *
  * The CLI has no canvas or native image decoder, but the app's FileView wants
  * a real aspect ratio to lay out an inline image before the blob downloads.
- * Every format Claude accepts states its dimensions in the first few dozen
+ * Every supported format states its dimensions in the first few dozen
  * bytes, so a header read covers exactly the formats that can reach us.
  *
- * Input is a ClaudeImageAttachment, whose mediaType was proven against the
+ * Input is an ImageAttachment, whose mediaType was proven against the
  * magic header at the checkpoint — so dispatch is a total lookup over the
  * four-format enum, never a guess. [LAW:parse-dont-validate] consumes the
  * stamp instead of re-sniffing.
  */
-import type { ClaudeImageAttachment, ClaudeImageMediaType } from '@/claude/claudeImageAttachment';
+import type { ImageAttachment, ImageMediaType } from '@/attachments/imageAttachment';
 
 export type ImageDimensions = { width: number; height: number };
 
@@ -91,7 +91,7 @@ function webpDimensions(b: Uint8Array): ImageDimensions | null {
   return null;
 }
 
-const PARSERS: Record<ClaudeImageMediaType, (b: Uint8Array) => ImageDimensions | null> = {
+const PARSERS: Record<ImageMediaType, (b: Uint8Array) => ImageDimensions | null> = {
   'image/png': pngDimensions,
   'image/jpeg': jpegDimensions,
   'image/gif': gifDimensions,
@@ -102,7 +102,7 @@ const PARSERS: Record<ClaudeImageMediaType, (b: Uint8Array) => ImageDimensions |
  * Null means the header was malformed past its magic bytes — the image may
  * still decode; the caller just loses the pre-download aspect ratio.
  */
-export function imageDimensionsOf(attachment: ClaudeImageAttachment): ImageDimensions | null {
+export function imageDimensionsOf(attachment: ImageAttachment): ImageDimensions | null {
   const parsed = PARSERS[attachment.mediaType](attachment.data);
   if (!parsed || parsed.width <= 0 || parsed.height <= 0) return null;
   return parsed;

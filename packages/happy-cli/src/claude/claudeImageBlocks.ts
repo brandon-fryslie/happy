@@ -2,13 +2,13 @@
  * The Anthropic SDK adapter for image attachments: proven attachments in,
  * content blocks the Agent SDK accepts out.
  *
- * Kept apart from claudeImageAttachment.ts because importing the SDK's types
- * pulls its .d.mts into pkgroll's declaration bundle, which only the launcher
- * — never the package's public entry — can afford to reach.
+ * Kept apart from attachments/imageAttachment.ts because importing the SDK's
+ * types pulls its .d.mts into pkgroll's declaration bundle, which only the
+ * launcher — never the package's public entry — can afford to reach.
  */
 
 import type { ImageBlockParam } from '@anthropic-ai/sdk/resources';
-import type { ClaudeImageAttachment, ClaudeImageMediaType } from './claudeImageAttachment';
+import type { ImageAttachment, ImageMediaType } from '@/attachments/imageAttachment';
 
 /**
  * An image block this module can actually emit. ImageBlockParam's `source` also
@@ -17,7 +17,7 @@ import type { ClaudeImageAttachment, ClaudeImageMediaType } from './claudeImageA
  * occur. [LAW:types-are-the-program] the strongest theorem that is still true.
  */
 export type ClaudeImageBlock = ImageBlockParam & {
-  source: { type: 'base64'; media_type: ClaudeImageMediaType; data: string };
+  source: { type: 'base64'; media_type: ImageMediaType; data: string };
 };
 
 /**
@@ -25,7 +25,7 @@ export type ClaudeImageBlock = ImageBlockParam & {
  * block shape is a total function — no format check, no skip, no branch.
  * [LAW:dataflow-not-control-flow]
  */
-export function toClaudeImageBlocks(attachments: ClaudeImageAttachment[]): ClaudeImageBlock[] {
+export function toClaudeImageBlocks(attachments: ImageAttachment[]): ClaudeImageBlock[] {
   return attachments.map((attachment) => ({
     type: 'image' as const,
     source: {
