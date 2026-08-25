@@ -136,6 +136,14 @@ export type InputItem =
     | { type: "image"; url: string }
     | { type: "localImage"; path: string };
 
+/**
+ * The InputItem variants that carry an image. The seam the attachment pipeline
+ * crosses to reach a turn: sendTurn appends these after the prompt text, and
+ * the narrowed type keeps a stray text item out of the image slot.
+ * [LAW:types-are-the-program]
+ */
+export type ImageInputItem = Extract<InputItem, { type: "image" } | { type: "localImage" }>;
+
 export type SandboxPolicy =
     | { type: "dangerFullAccess" }
     | { type: "readOnly" }

@@ -34,6 +34,15 @@ import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { mapCodexMcpMessageToSessionEnvelopes, mapCodexProcessorMessageToSessionEnvelopes } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
+import {
+    describeRejectedAttachments,
+    parseImageAttachment,
+    partitionAttachmentOutcomes,
+    unreadableAttachment,
+    type AttachmentOutcome,
+    type ImageAttachment,
+} from '@/attachments/imageAttachment';
+import { writeCodexImageInputs, type CodexImageInputs } from './codexImageInputs';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -206,7 +215,7 @@ export async function runCodex(opts: {
         }
     }
 
-    const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
+    const messageQueue = new MessageQueue2<EnhancedMode, ImageAttachment>((mode) => hashObject({
         permissionMode: mode.permissionMode,
         model: mode.model,
         effort: mode.effort,
@@ -238,7 +247,47 @@ export async function runCodex(opts: {
         'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
     ];
 
-    session.onUserMessage((message) => {
+    // Handle file events — each download promise resolves to its own decoded
+    // attachment (or a typed rejection). drainAttachmentsForUserMessage on the
+    // next text claims the in-flight set atomically; later file events go into
+    // a fresh bucket bound to the next message. Same pattern as runClaude.
+    session.onFileEvent((fileEvent) => {
+        const ev = fileEvent.content.data.ev;
+        logger.debug(`[Codex] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
+        const downloadPromise = (async (): Promise<AttachmentOutcome> => {
+            try {
+                const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
+                if (!decrypted) {
+                    logger.debug(`[Codex] Failed to decrypt attachment: ${ev.name}`);
+                    return unreadableAttachment(ev.name);
+                }
+                logger.debug(`[Codex] Attachment decrypted: ${ev.name} (${decrypted.length} bytes)`);
+                // The checkpoint: the app's claimed mimeType (ev.mimeType) stops here.
+                // Everything inland reads the media type proven from the bytes.
+                return parseImageAttachment(ev.name, decrypted);
+            } catch (error) {
+                logger.debug(`[Codex] Failed to download attachment: ${ev.name}`, { error });
+                return unreadableAttachment(ev.name);
+            }
+        })();
+        session.trackAttachmentDownload(downloadPromise);
+    });
+
+    session.onUserMessage(async (message) => {
+        // Claim every file attachment that arrived strictly before this text.
+        // New file events from this point on belong to the next user message.
+        const drained = await session.drainAttachmentsForUserMessage();
+        const { ready: attachmentsForThisMessage, rejected } = partitionAttachmentOutcomes(drained);
+
+        // The single place that knows an attachment the user sent will not be
+        // seen by Codex. Saying nothing here is how a paste appears to work and
+        // silently doesn't. [LAW:no-silent-failure]
+        if (rejected.length > 0) {
+            const notice = describeRejectedAttachments(rejected, 'Codex');
+            logger.debug(`[Codex] ${notice}`);
+            session.sendSessionEvent({ type: 'message', message: notice });
+        }
+
         // Resolve permission mode (validate against Codex-native modes)
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
@@ -290,7 +339,7 @@ export async function runCodex(opts: {
             model: messageModel,
             effort: messageEffort,
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
     });
     let thinking = false;
     let currentTurnId: string | null = null;
@@ -671,11 +720,12 @@ export async function runCodex(opts: {
             first = false;
         }
 
-        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
+        type PendingMessage = { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: ImageAttachment[] };
+        let pending: PendingMessage | null = null;
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
-            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
+            let message: PendingMessage | null = pending;
             pending = null;
             if (!message) {
                 // Capture the current signal to distinguish idle-abort from queue close
@@ -700,6 +750,9 @@ export async function runCodex(opts: {
 
             // Display user messages in the UI
             messageBuffer.addMessage(message.message, 'user');
+
+            // Owned by this turn: assigned inside the try, unwound in the finally.
+            let imageInputs: CodexImageInputs | null = null;
 
             try {
                 // Map permission mode to approval policy and sandbox.
@@ -729,11 +782,16 @@ export async function runCodex(opts: {
                     ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION
                     : message.message;
 
+                // Codex takes images by path, so the proven attachments become
+                // temp files for exactly the lifetime of this turn.
+                imageInputs = await writeCodexImageInputs(message.attachments ?? []);
+
                 const result = await client.sendTurnAndWait(turnPrompt, {
                     model: message.mode.model,
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
                     effort: message.mode.effort,
+                    images: imageInputs.items,
                 });
                 first = false;
 
@@ -748,6 +806,13 @@ export async function runCodex(opts: {
                 messageBuffer.addMessage('Process exited unexpectedly', 'status');
                 session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
             } finally {
+                // The turn is over either way — the temp files behind its
+                // localImage items are no longer read by Codex.
+                if (imageInputs) {
+                    await imageInputs.cleanup().catch((error) => {
+                        logger.debug('[Codex] Failed to clean up image temp files', error);
+                    });
+                }
                 // Reset permission handler, reasoning processor, and diff processor
                 permissionHandler.reset();
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls

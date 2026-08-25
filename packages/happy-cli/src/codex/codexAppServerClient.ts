@@ -31,6 +31,7 @@ import type {
     ApprovalPolicy,
     SandboxMode,
     InputItem,
+    ImageInputItem,
     ReasoningEffort,
     McpServerElicitationRequestResponse,
 } from './codexAppServerTypes';
@@ -771,6 +772,7 @@ export class CodexAppServerClient {
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
         effort?: ReasoningEffort;
+        images?: ImageInputItem[];
     }): Promise<void> {
         if (!this._threadId) {
             throw new Error('No active thread. Call startThread first.');
@@ -778,6 +780,7 @@ export class CodexAppServerClient {
 
         const input: InputItem[] = [
             { type: 'text', text: prompt },
+            ...(opts?.images ?? []),
         ];
 
         // Build params — only include optional fields when set (server uses thread defaults otherwise)
@@ -831,6 +834,7 @@ export class CodexAppServerClient {
         approvalPolicy?: ApprovalPolicy;
         sandbox?: SandboxMode;
         effort?: ReasoningEffort;
+        images?: ImageInputItem[];
         turnTimeoutMs?: number;
     }): Promise<{ aborted: boolean }> {
         // Wait for any in-flight interruptTurn() to complete before starting a new

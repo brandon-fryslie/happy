@@ -41,11 +41,19 @@ describe('resolveAttachmentSupport', () => {
         expect(resolveAttachmentSupport(metadata({ version: '2.0.0' }))).toBe('supported');
     });
 
-    it('blames the agent, not the CLI, when a non-Claude flavor runs a current CLI', () => {
-        expect(resolveAttachmentSupport(metadata({ flavor: 'codex', version: '2.0.0' }))).toBe('unsupportedAgent');
+    it('accepts a Codex session on a CLI whose runner sends localImage input items', () => {
+        expect(resolveAttachmentSupport(metadata({ flavor: 'codex', version: '2.0.0' }))).toBe('supported');
+    });
+
+    it('rejects a Codex session on a CLI predating attachment routing', () => {
+        expect(resolveAttachmentSupport(metadata({ flavor: 'codex', version: '1.1.8' }))).toBe('outdatedCli');
+    });
+
+    it('blames the agent, not the CLI, when an unsupported flavor runs a current CLI', () => {
+        expect(resolveAttachmentSupport(metadata({ flavor: 'gemini', version: '2.0.0' }))).toBe('unsupportedAgent');
     });
 
     it('still blames the agent when the CLI is also too old — updating happy would not help', () => {
-        expect(resolveAttachmentSupport(metadata({ flavor: 'codex', version: '1.1.8' }))).toBe('unsupportedAgent');
+        expect(resolveAttachmentSupport(metadata({ flavor: 'gemini', version: '1.1.8' }))).toBe('unsupportedAgent');
     });
 });
