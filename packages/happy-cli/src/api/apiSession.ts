@@ -2,11 +2,12 @@ import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
-import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
+import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt, encryptBlob } from './encryption';
 import { backoff, delay } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
-import type { AttachmentOutcome } from '@/claude/claudeImageAttachment';
+import { parseClaudeImageAttachment, type AttachmentOutcome } from '@/claude/claudeImageAttachment';
+import { imageDimensionsOf } from '@/claude/utils/imageDimensions';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { deriveKey } from '@/utils/deriveKey';
@@ -14,11 +15,12 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
-import { type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
+import { createEnvelope, type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
     type ClaudeSessionProtocolState,
+    type ToolResultImage,
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
@@ -94,6 +96,8 @@ export class ApiSessionClient extends EventEmitter {
      * no shared push-array between batches that a late download could leak into.
      */
     private pendingDownloads: Promise<AttachmentOutcome>[] = [];
+    /** Serializes tool-result image publishes; see publishToolResultImages. */
+    private toolResultImagePublishChain: Promise<void> = Promise.resolve();
     readonly rpcHandlerManager: RpcHandlerManager;
     private agentStateLock = new AsyncLock();
     private metadataLock = new AsyncLock();
@@ -331,6 +335,97 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * Upload an encrypted attachment blob via the request-upload flow —
+     * the mirror of downloadAttachment above, and byte-compatible with the
+     * app's uploader: POST /request-upload → { ref, uploadUrl, method } →
+     * PUT raw octet-stream (local mode, Bearer) or POST multipart form
+     * (S3 presigned policy). Returns the ref the blob now lives under.
+     */
+    async uploadAttachment(filename: string, encrypted: Uint8Array): Promise<string> {
+        const requestUrl = `${configuration.serverUrl}/v1/sessions/${this.sessionId}/attachments/request-upload`;
+        const requestRes = await axios.post(
+            requestUrl,
+            { filename, size: encrypted.length },
+            { headers: { ...this.authHeaders(), 'Content-Type': 'application/json' }, timeout: 30000 },
+        );
+        const { ref, uploadUrl, method, formFields } = requestRes.data ?? {};
+        if (typeof ref !== 'string' || typeof uploadUrl !== 'string') {
+            throw new Error('request-upload returned no ref/uploadUrl');
+        }
+
+        // Standalone copy: axios serializes the raw ArrayBuffer, and a view
+        // onto a larger parent buffer would upload the parent's trailing
+        // bytes too, corrupting the ciphertext for every downloader.
+        const body = new Uint8Array(encrypted).buffer;
+
+        if (method === 'POST') {
+            const formData = new FormData();
+            for (const [k, v] of Object.entries((formFields ?? {}) as Record<string, string>)) {
+                formData.append(k, v);
+            }
+            formData.append('file', new Blob([body], { type: 'application/octet-stream' }));
+            await axios.post(uploadUrl, formData, { timeout: 60000 });
+            return ref;
+        }
+
+        const isServerUrl = uploadUrl.startsWith(configuration.serverUrl);
+        await axios.put(uploadUrl, body, {
+            headers: {
+                'Content-Type': 'application/octet-stream',
+                ...(isServerUrl ? this.authHeaders() : {}),
+            },
+            timeout: 60000,
+            maxBodyLength: 10 * 1024 * 1024 + 64 * 1024,
+        });
+        return ref;
+    }
+
+    /**
+     * Publish the images the protocol mapper found inside tool_result blocks:
+     * prove each payload at the attachment checkpoint, encrypt it, upload it,
+     * and emit a `file` envelope carrying the ref into the turn the tool ran
+     * in. The app renders that envelope with the same component user
+     * attachments use — there is no second inline-image path to keep in sync.
+     *
+     * Publishes chain onto one promise so multi-image results land in JSONL
+     * order even though each upload is async. [LAW:no-ambient-temporal-coupling]
+     * the chain is the ordering owner. A failed upload logs the failure —
+     * the log file is this process's loudness channel — and never breaks the
+     * chain for the images behind it.
+     */
+    publishToolResultImages(images: ToolResultImage[]): void {
+        for (const image of images) {
+            this.toolResultImagePublishChain = this.toolResultImagePublishChain
+                .then(() => this.publishToolResultImage(image))
+                .catch((error) => {
+                    logger.debug('[ATTACHMENT] ERROR: failed to publish tool-result image:', error);
+                });
+        }
+    }
+
+    private async publishToolResultImage(image: ToolResultImage): Promise<void> {
+        const bytes = new Uint8Array(Buffer.from(image.base64, 'base64'));
+        const outcome = parseClaudeImageAttachment('tool-result', bytes);
+        if (outcome.kind === 'rejected') {
+            logger.debug(`[ATTACHMENT] ERROR: tool-result image rejected (${outcome.rejection.reason}), not published`);
+            return;
+        }
+        const { attachment } = outcome;
+        const name = `tool-result.${attachment.mediaType.slice('image/'.length)}`;
+        const dimensions = imageDimensionsOf(attachment);
+        const key = await this.getBlobKey();
+        const ref = await this.uploadAttachment(name, encryptBlob(attachment.data, key));
+        this.sendSessionProtocolMessage(createEnvelope('agent', {
+            t: 'file',
+            ref,
+            name,
+            size: attachment.data.length,
+            mimeType: attachment.mediaType,
+            ...(dimensions ? { image: dimensions } : {}),
+        }, { turn: image.turn, subagent: image.subagent }));
+    }
+
+    /**
      * Track an attachment download whose promise resolves to an outcome — the
      * parsed attachment, or a rejection naming the file that failed. The
      * download stays in the current batch until the next
@@ -506,6 +601,7 @@ export class ApiSessionClient extends EventEmitter {
         for (const envelope of mapped.envelopes) {
             this.sendSessionProtocolMessage(envelope);
         }
+        this.publishToolResultImages(mapped.images);
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {

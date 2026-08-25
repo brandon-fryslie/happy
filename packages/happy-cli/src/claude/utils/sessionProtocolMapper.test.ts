@@ -79,6 +79,49 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
                 }),
             ]),
         );
+        expect(ended.images).toEqual([]);
+    });
+
+    it('extracts base64 image blocks from tool_result content as upload descriptions', () => {
+        const started = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-img-1',
+            message: {
+                role: 'assistant',
+                content: [
+                    { type: 'tool_use', id: 'tool-img', name: 'mcp__browser__screenshot', input: {} },
+                ],
+            },
+        } as any, { currentTurnId: null });
+
+        const ended = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'u-img-1',
+            message: {
+                role: 'user',
+                content: [
+                    {
+                        type: 'tool_result',
+                        tool_use_id: 'tool-img',
+                        content: [
+                            { type: 'text', text: 'screenshot taken' },
+                            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'aGVsbG8=' } },
+                            // URL-sourced images have no bytes to upload — never extracted.
+                            { type: 'image', source: { type: 'url', url: 'https://example.com/x.png' } },
+                        ],
+                    },
+                ],
+            },
+        } as any, { currentTurnId: started.currentTurnId });
+
+        expect(ended.envelopes).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ ev: { t: 'tool-call-end', call: 'tool-img' } }),
+            ]),
+        );
+        expect(ended.images).toEqual([
+            { turn: started.currentTurnId, subagent: undefined, base64: 'aGVsbG8=' },
+        ]);
     });
 
     it('exposes the generated session subagent id on Agent tool calls', () => {

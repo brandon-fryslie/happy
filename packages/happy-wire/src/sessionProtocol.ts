@@ -53,7 +53,11 @@ export const sessionFileEventSchema = z.object({
     .object({
       width: z.number(),
       height: z.number(),
-      thumbhash: z.string(),
+      // Optional to match the app's reader: senders without a pixel decoder
+      // (native iOS picker, the CLI) know dimensions but cannot compute a
+      // thumbhash. [LAW:one-source-of-truth] the app schema already reads it
+      // as optional; requiring it here was drift, not a contract.
+      thumbhash: z.string().optional(),
     })
     .optional(),
 });
