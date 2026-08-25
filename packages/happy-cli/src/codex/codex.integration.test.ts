@@ -21,7 +21,13 @@ import { getIntegrationEnv } from "@/testing/currentIntegrationEnv";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const DEFAULT_MODEL = "gpt-5.2-codex";
+/**
+ * No model pin: ChatGPT-auth accounts reject explicit API model ids
+ * ("The 'gpt-5.2-codex' model is not supported when using Codex with a
+ * ChatGPT account" — every turn failed and getMessages() came back empty),
+ * while the account-default model works under both auth modes.
+ */
+const DEFAULT_MODEL: string | undefined = undefined;
 const integrationEnv = getIntegrationEnv();
 
 type PermissionPolicy = "approve" | "deny" | "cancel" | "hold";
