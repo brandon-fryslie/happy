@@ -126,7 +126,13 @@ export default {
             [
                 "expo-audio",
                 {
-                    microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations."
+                    microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations.",
+                    // Hands-free answers a permission prompt by voice while the screen is off. On
+                    // iOS that is already covered by UIBackgroundModes:audio, which
+                    // enableBackgroundPlayback adds by default; this flag is what grants Android the
+                    // FOREGROUND_SERVICE_MICROPHONE and POST_NOTIFICATIONS permissions the same
+                    // behavior needs there.
+                    enableBackgroundRecording: true
                 }
             ],
             [

@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { File, Paths } from 'expo-file-system';
-import { createAudioPlayer, AudioPlayer } from 'expo-audio';
+import type { File } from 'expo-file-system';
+import type { AudioPlayer } from 'expo-audio';
+import { playMp3, type AbortToken } from '@/voice/playMp3';
 import { storage } from '@/sync/storage';
 import { setTtsPosition, getTtsPosition, clearTtsPosition } from '@/sync/persistence';
 import { summarizeMessages } from '@/sync/llm/apiSummarize';
@@ -28,11 +29,6 @@ export interface TtsPlayer {
     /** Awaitable; intended to be wrapped with useHappyAction so HappyError surfaces as a modal. */
     play: (mode: TtsPlayMode) => Promise<void>;
     stop: () => void;
-}
-
-interface AbortToken {
-    aborted: boolean;
-    wakeup: () => void;
 }
 
 export function useTtsPlayer(sessionId: string): TtsPlayer {
@@ -119,39 +115,12 @@ export function useTtsPlayer(sessionId: string): TtsPlayer {
                 });
                 if (token.aborted) return;
 
-                const file = new File(Paths.cache, `tts-${sessionId}-${Date.now()}.mp3`);
-                file.create({ overwrite: true });
-                file.write(new Uint8Array(audio));
-                tempFileRef.current = file;
-                if (token.aborted) {
-                    cleanup();
-                    return;
-                }
-
-                const player = createAudioPlayer({ uri: file.uri });
-                playerRef.current = player;
                 setIsLoading(false);
                 setIsPlaying(true);
 
-                await new Promise<void>((resolve) => {
-                    let settled = false;
-                    const settle = () => {
-                        if (settled) return;
-                        settled = true;
-                        resolve();
-                    };
-                    token.wakeup = settle;
-                    const sub = player.addListener('playbackStatusUpdate', (status) => {
-                        if (status.didJustFinish) {
-                            sub.remove();
-                            settle();
-                        }
-                    });
-                    if (token.aborted) {
-                        sub.remove();
-                        settle();
-                    }
-                    player.play();
+                await playMp3(audio, `tts-${sessionId}-${Date.now()}.mp3`, token, {
+                    setFile: (f) => { tempFileRef.current = f; },
+                    setPlayer: (p) => { playerRef.current = p; },
                 });
 
                 const lastId = slice[slice.length - 1].id;
@@ -173,7 +142,7 @@ export function useTtsPlayer(sessionId: string): TtsPlayer {
     return { isPlaying, isLoading, lastSpokenMessageId, play, stop };
 }
 
-interface ResolvedConfig {
+export interface ResolvedConfig {
     llmBaseUrl: string;
     llmApiKey: string;
     llmModel: string;
@@ -198,7 +167,7 @@ const SPEECH_VOICE_SOURCES: Record<TtsProvider, (s: ReturnType<typeof storage.ge
     openai: (s) => s.ttsOpenAiVoice,
 };
 
-function resolveConfig(settings: ReturnType<typeof storage.getState>['settings']): ResolvedConfig {
+export function resolveConfig(settings: ReturnType<typeof storage.getState>['settings']): ResolvedConfig {
     const llmBaseUrl = settings.ttsLlmBaseUrl?.trim();
     const llmModel = settings.ttsLlmModel?.trim();
     const provider = settings.ttsProvider;
