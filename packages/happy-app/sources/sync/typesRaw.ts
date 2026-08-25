@@ -149,7 +149,17 @@ export type RawToolUseContent = z.infer<typeof rawToolUseContentSchema>;
 const rawToolResultContentSchema = z.object({
     type: z.literal('tool_result'),
     tool_use_id: z.string(),
-    content: z.union([z.array(z.object({ type: z.literal('text'), text: z.string() })), z.string()]),
+    // Text-or-image union: agent tool_results (MCP screenshots, image edits)
+    // can carry image blocks alongside text. Admitting them here keeps the
+    // whole message from failing parse and vanishing; live sessions render
+    // the image via the separate `file` envelope the CLI emits.
+    content: z.union([
+        z.array(z.union([
+            z.object({ type: z.literal('text'), text: z.string() }),
+            z.object({ type: z.literal('image') }).passthrough(),
+        ])),
+        z.string(),
+    ]),
     is_error: z.boolean().optional(),
     permissions: z.object({
         date: z.number(),
@@ -890,7 +900,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                             content.push({
                                 ...c,  // WOLOG: Preserve all fields including unknown ones
                                 type: 'tool-result',
-                                content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content?.[0]?.text ?? ''),
+                                content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content?.find((item): item is { type: 'text'; text: string } => item.type === 'text')?.text ?? ''),
                                 is_error: c.is_error || false,
                                 uuid: raw.content.data.uuid,
                                 parentUUID: raw.content.data.parentUuid ?? null,

@@ -2006,5 +2006,81 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
 
             expect(normalized).toBeNull();
         });
+
+        it('normalizes agent-role file events (CLI tool-result images) to a completed file tool call', () => {
+            const normalized = normalizeRawMessage('db-12', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-12',
+                        time: 1,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        ev: {
+                            t: 'file',
+                            ref: 'sessions/s1/blob-1',
+                            name: 'tool-result.png',
+                            size: 1234,
+                            // The CLI reads dimensions from image headers but
+                            // cannot compute a thumbhash — image{} must be
+                            // valid without one.
+                            image: { width: 1920, height: 1080 }
+                        }
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeTruthy();
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content[0]).toMatchObject({
+                    type: 'tool-call',
+                    name: 'file',
+                    input: {
+                        ref: 'sessions/s1/blob-1',
+                        name: 'tool-result.png',
+                        image: { width: 1920, height: 1080 }
+                    }
+                });
+                expect(normalized.content[1]).toMatchObject({ type: 'tool-result', is_error: false });
+            }
+        });
+    });
+
+    describe('tool_result image blocks (legacy claude messages)', () => {
+        it('parses a tool_result whose content mixes text and image blocks, keeping the text', () => {
+            const normalized = normalizeRawMessage('db-img-1', null, 1, {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'user',
+                        uuid: 'uuid-img-1',
+                        message: {
+                            role: 'user',
+                            content: [{
+                                type: 'tool_result',
+                                tool_use_id: 'tool-img-1',
+                                content: [
+                                    { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'aGVsbG8=' } },
+                                    { type: 'text', text: 'screenshot taken' }
+                                ]
+                            }]
+                        }
+                    }
+                }
+            } as any);
+
+            // Before the schema admitted image blocks, this whole message
+            // failed parse and vanished from history.
+            expect(normalized).toBeTruthy();
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content[0]).toMatchObject({
+                    type: 'tool-result',
+                    tool_use_id: 'tool-img-1',
+                    content: 'screenshot taken'
+                });
+            }
+        });
     });
 });

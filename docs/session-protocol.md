@@ -131,7 +131,11 @@ Tool invocation completes. Matches a prior `tool-call-start` by `call`.
 
 ### `file`
 
-File attachment. The file must be uploaded to the server first.
+File attachment. The file must be uploaded to the server first. Sent in both
+directions: `role: "user"` for attachments the app uploads with a prompt, and
+`role: "agent"` for images the CLI finds inside a tool result (MCP
+screenshots, image-edit outputs) and republishes through the same encrypted
+upload path.
 
 ```json
 { "t": "file", "ref": "upload_def", "name": "report.pdf", "size": 524288 }
@@ -145,7 +149,7 @@ File attachment. The file must be uploaded to the server first.
 | `image` | object? | Optional image metadata when the file is an image |
 | `image.width` | number | Image width in pixels |
 | `image.height` | number | Image height in pixels |
-| `image.thumbhash` | string | Base64-encoded [ThumbHash](https://evanw.github.io/thumbhash/) for instant placeholder |
+| `image.thumbhash` | string? | Base64-encoded [ThumbHash](https://evanw.github.io/thumbhash/) for instant placeholder. Optional: senders without a pixel decoder (the CLI, native pickers) send dimensions alone |
 
 ### `turn-start`
 

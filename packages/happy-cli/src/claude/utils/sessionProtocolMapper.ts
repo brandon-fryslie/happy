@@ -21,7 +21,42 @@ export type ClaudeSessionProtocolState = {
 type ClaudeMapperResult = {
     currentTurnId: string | null;
     envelopes: SessionEnvelope[];
+    /**
+     * Images found inside tool_result blocks, as descriptions for the edge to
+     * act on. The wire has no inline-image event — images travel as encrypted
+     * attachment refs in `file` envelopes — and minting a ref means uploading,
+     * an effect this pure mapper must not perform. [LAW:effects-at-boundaries]
+     * the caller (ApiSessionClient) uploads each one and emits its envelope.
+     */
+    images: ToolResultImage[];
 };
+
+export type ToolResultImage = {
+    turn: string;
+    subagent?: string;
+    /** Raw base64 payload exactly as Claude's JSONL carried it — unproven; the edge runs it through the attachment checkpoint. */
+    base64: string;
+};
+
+/**
+ * Pull the base64 image blocks out of one tool_result block's content array.
+ * Text extraction stays where it is (the app shows tool text via other
+ * means); this reads, never mutates, so the envelope mapping is unaffected.
+ */
+function extractToolResultImages(block: unknown, turn: string, subagent: string | undefined): ToolResultImage[] {
+    const content = (block as { content?: unknown }).content;
+    if (!Array.isArray(content)) {
+        return [];
+    }
+    const images: ToolResultImage[] = [];
+    for (const item of content) {
+        const source = (item as { type?: unknown; source?: { type?: unknown; data?: unknown } })?.source;
+        if ((item as { type?: unknown })?.type === 'image' && source?.type === 'base64' && typeof source.data === 'string' && source.data.length > 0) {
+            images.push({ turn, subagent, base64: source.data });
+        }
+    }
+    return images;
+}
 
 function isSubagentTool(name: string): boolean {
     return name === 'Task' || name === 'Agent';
@@ -429,6 +464,7 @@ export function closeClaudeTurnWithStatus(
     return {
         currentTurnId: state.currentTurnId,
         envelopes,
+        images: [],
     };
 }
 
@@ -444,6 +480,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     state: ClaudeSessionProtocolState,
 ): ClaudeMapperResult {
     const envelopes: SessionEnvelope[] = [];
+    const images: ToolResultImage[] = [];
     const claudeUuid = pickUuid(message);
     const providerSubagent = resolveProviderSubagent(message, state);
     const subagent = providerSubagent
@@ -456,6 +493,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         return {
             currentTurnId: state.currentTurnId,
             envelopes: [],
+            images: [],
         };
     }
 
@@ -463,6 +501,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         return {
             currentTurnId: state.currentTurnId,
             envelopes,
+            images,
         };
     }
 
@@ -470,6 +509,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         return {
             currentTurnId: state.currentTurnId,
             envelopes,
+            images,
         };
     }
 
@@ -509,6 +549,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     for (const bufferedMessage of buffered) {
                         const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);
                         envelopes.push(...replay.envelopes);
+                        images.push(...replay.images);
                     }
                     continue;
                 }
@@ -528,6 +569,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                 for (const bufferedMessage of buffered) {
                     const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);
                     envelopes.push(...replay.envelopes);
+                    images.push(...replay.images);
                 }
             }
         }
@@ -535,6 +577,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         return {
             currentTurnId: state.currentTurnId,
             envelopes,
+            images,
         };
     }
 
@@ -552,6 +595,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             return {
                 currentTurnId: state.currentTurnId,
                 envelopes,
+                images,
             };
         }
 
@@ -560,6 +604,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             return {
                 currentTurnId: state.currentTurnId,
                 envelopes,
+                images,
             };
         }
 
@@ -586,6 +631,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     t: 'tool-call-end',
                     call: block.tool_use_id,
                 }, { turn: turnId, subagent }));
+                images.push(...extractToolResultImages(block, turnId, subagent));
                 continue;
             }
 
@@ -597,11 +643,13 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         return {
             currentTurnId: state.currentTurnId,
             envelopes,
+            images,
         };
     }
 
     return {
         currentTurnId: state.currentTurnId,
         envelopes,
+        images,
     };
 }

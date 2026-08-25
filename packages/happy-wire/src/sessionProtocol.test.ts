@@ -45,7 +45,10 @@ describe('session protocol schemas', () => {
   it('rejects malformed events', () => {
     expect(sessionEventSchema.safeParse({ t: 'tool-call-start', call: '1' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x' }).success).toBe(false);
-    expect(sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x', size: 1, image: { width: 10, height: 10 } }).success).toBe(false);
+    // Dimensions without a thumbhash are a valid image{} — senders with no
+    // pixel decoder (the CLI, native pickers) read sizes from headers only.
+    expect(sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x', size: 1, image: { width: 10, height: 10 } }).success).toBe(true);
+    expect(sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x', size: 1, image: { width: 10 } }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'turn-end' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'turn-end', status: 'canceled' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'start', title: 1 }).success).toBe(false);

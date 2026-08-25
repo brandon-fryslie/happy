@@ -112,6 +112,22 @@ export function decryptLegacy(data: Uint8Array, secret: Uint8Array): any | null 
 }
 
 /**
+ * Encrypt a binary blob with NaCl crypto_secretbox (XSalsa20-Poly1305).
+ * Wire format: [nonce (24 bytes)] [ciphertext + auth tag (16 bytes + data)]
+ * The inverse of decryptBlob below; byte-compatible with the app-side pair in
+ * packages/happy-app/sources/encryption/blob.ts, so a blob either side
+ * uploads is readable by the other.
+ */
+export function encryptBlob(data: Uint8Array, key: Uint8Array): Uint8Array {
+  const nonce = new Uint8Array(randomBytes(tweetnacl.secretbox.nonceLength));
+  const ciphertext = tweetnacl.secretbox(data, nonce, key);
+  const bundle = new Uint8Array(nonce.length + ciphertext.length);
+  bundle.set(nonce, 0);
+  bundle.set(ciphertext, nonce.length);
+  return bundle;
+}
+
+/**
  * Decrypt a binary blob encrypted with NaCl crypto_secretbox (XSalsa20-Poly1305).
  * Wire format: [nonce (24 bytes)] [ciphertext + auth tag (16 bytes + data)]
  * Matches the app-side encryptBlob() in packages/happy-app/sources/encryption/blob.ts.
