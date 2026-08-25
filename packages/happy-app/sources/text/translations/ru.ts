@@ -1080,6 +1080,10 @@ export const ru: TranslationStructure = {
         limitMessage: ({ max }: { max: number }) => `Можно прикрепить не более ${max} изображений на сообщение.`,
         fileTooLargeTitle: 'Файл слишком большой',
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" превышает лимит ${maxMb}МБ и не был добавлен.`,
+        filesTooLargeMessage: ({ count, maxMb }: { count: number; maxMb: number }) => `${count} images exceed the ${maxMb}MB limit and were not added.`,
+        notAnImageTitle: 'Not an Image',
+        notAnImageMessage: 'Only image files can be attached to a message.',
+        dropOverlayTitle: 'Drop images to attach',
         uploadFailedTitle: 'Ошибка загрузки',
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? 'Одно изображение не удалось загрузить — оно не было отправлено.'

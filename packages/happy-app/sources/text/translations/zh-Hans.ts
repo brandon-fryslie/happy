@@ -1052,6 +1052,10 @@ export const zhHans: TranslationStructure = {
         limitMessage: ({ max }: { max: number }) => `每条消息最多可附加 ${max} 张图片。`,
         fileTooLargeTitle: '文件过大',
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"超过了 ${maxMb}MB 的限制，未能添加。`,
+        filesTooLargeMessage: ({ count, maxMb }: { count: number; maxMb: number }) => `${count} images exceed the ${maxMb}MB limit and were not added.`,
+        notAnImageTitle: 'Not an Image',
+        notAnImageMessage: 'Only image files can be attached to a message.',
+        dropOverlayTitle: 'Drop images to attach',
         uploadFailedTitle: '上传失败',
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? '一张图片上传失败，未发送。'

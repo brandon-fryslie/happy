@@ -227,6 +227,10 @@ export const en = {
         limitMessage: ({ max }: { max: number }) => `You can attach up to ${max} images per message.`,
         fileTooLargeTitle: 'File Too Large',
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" exceeds the ${maxMb}MB limit and was not added.`,
+        filesTooLargeMessage: ({ count, maxMb }: { count: number; maxMb: number }) => `${count} images exceed the ${maxMb}MB limit and were not added.`,
+        notAnImageTitle: 'Not an Image',
+        notAnImageMessage: 'Only image files can be attached to a message.',
+        dropOverlayTitle: 'Drop images to attach',
         uploadFailedTitle: 'Upload Failed',
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? 'One image could not be uploaded and was not sent.'

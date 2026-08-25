@@ -44,6 +44,7 @@ import { formatPathRelativeToHome, getResumeCommandBlock, getSessionName, useSes
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { resolveAttachmentSupport } from '@/sync/attachmentSupport';
+import { useWebImageDrop } from '@/hooks/useWebImageDrop';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -383,6 +384,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // speak for images that were queued before this metadata arrived.
     const canAddImages = expImageUpload && resolveAttachmentSupport(session.metadata) === 'supported';
 
+    // [LAW:one-source-of-truth] Derived once and handed to every way of adding an image.
+    // Paste reads it off the AgentInput prop and drop takes it directly, so a session
+    // that cannot receive images loses all three routes together rather than one at a
+    // time as each new route forgets to ask.
+    const onAddImages = canAddImages ? addImages : undefined;
+    const isDragActive = useWebImageDrop(onAddImages);
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {
@@ -548,7 +556,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             selectedImages={expImageUpload ? selectedImages : undefined}
             onPickImages={canAddImages ? pickImages : undefined}
             onRemoveImage={expImageUpload ? removeImage : undefined}
-            onAddImages={canAddImages ? addImages : undefined}
+            onAddImages={onAddImages}
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
             usageData={sessionUsage ? {
@@ -597,6 +605,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     return (
         <>
+            {isDragActive && <ImageDropOverlay />}
+
             {/* CLI Version Warning Overlay - Subtle centered pill */}
             {shouldShowCliWarning && !(isLandscape && deviceType === 'phone') && (
                 <Pressable
@@ -679,6 +689,57 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }
         </>
     )
+}
+
+/**
+ * Shown while a file drag is over the window, so the drag has somewhere to be aimed.
+ *
+ * `pointerEvents: 'none'` is what makes it safe to show, not just polite. An overlay
+ * that took hits would appear under the cursor mid-drag, fire dragleave on whatever was
+ * beneath it and dragenter on itself, and strobe itself on and off for the length of
+ * the drag. Being invisible to hit-testing keeps the depth count in useWebImageDrop
+ * counting the elements the user is actually over.
+ */
+function ImageDropOverlay() {
+    const { theme } = useUnistyles();
+    return (
+        <View
+            pointerEvents="none"
+            style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 999,
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 16,
+                backgroundColor: `rgba(${theme.dark ? '28, 23, 28' : '255, 255, 255'}, 0.88)`,
+            }}
+        >
+            <View style={{
+                flexGrow: 1,
+                alignSelf: 'stretch',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 16,
+                borderWidth: 2,
+                borderStyle: 'dashed',
+                borderColor: theme.colors.textSecondary,
+            }}>
+                <Ionicons name="image-outline" size={40} color={theme.colors.textSecondary} />
+                <Text style={{
+                    marginTop: 12,
+                    fontSize: 16,
+                    fontWeight: '600',
+                    color: theme.colors.textSecondary,
+                }}>
+                    {t('imageUpload.dropOverlayTitle')}
+                </Text>
+            </View>
+        </View>
+    );
 }
 
 function InactiveArchivedHint(props: {

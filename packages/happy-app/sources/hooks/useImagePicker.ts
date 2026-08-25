@@ -1,13 +1,16 @@
 /**
- * Image picker hook for attaching images to messages.
+ * Image attachment state for one composer: what is queued, and every way to queue it.
  *
- * Wraps expo-image-picker with permission handling and thumbhash generation.
- * Enforces limits: max 20 images per message, 10MB per file.
+ * Three sources feed the same queue — the library picker here, and web paste and drop
+ * through `addImages`. [LAW:single-enforcer] `addImages` is where the limits are
+ * applied, so every source obeys them and hears about it the same way. Previously the
+ * picker checked the 10MB limit and paste did not, which meant a pasted screenshot too
+ * large to upload was accepted silently and failed minutes later, after send, as a
+ * generic "upload failed".
  *
  * Note: fileSize from expo-image-picker is optional — some platforms do not
  * provide it (returns undefined → size=0). Such files pass the client-side
- * size check; the server enforces the limit on upload. Phase 5 should handle
- * 413 responses gracefully.
+ * size check; the server enforces the limit on upload.
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
@@ -15,11 +18,14 @@ import { Platform } from 'react-native';
 import { Modal } from '@/modal';
 import { generateThumbhash } from '@/utils/thumbhash';
 import { t } from '@/text';
-import type { AttachmentPreview } from '@/sync/attachmentTypes';
+import {
+    MAX_IMAGES_PER_MESSAGE,
+    MAX_FILE_SIZE,
+    MAX_FILE_SIZE_MB,
+    type AttachmentPreview,
+} from '@/sync/attachmentTypes';
 
-export const MAX_IMAGES_PER_MESSAGE = 20;
-export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-
+export { MAX_IMAGES_PER_MESSAGE, MAX_FILE_SIZE };
 export type { AttachmentPreview };
 
 type UseImagePickerResult = {
@@ -53,10 +59,53 @@ export function useImagePicker(): UseImagePickerResult {
         return true;
     }, []);
 
+    /**
+     * The one gate every attachment passes through, whatever picked it.
+     *
+     * Refusals are announced rather than absorbed: dropping twenty-five screenshots at
+     * once used to append twenty and discard five without a word, which looks exactly
+     * like the app losing them. When both limits bite at once the size warning wins —
+     * it is the more surprising of the two, and stacking two modals is worse than
+     * deferring one message the user will see on their next attempt.
+     */
+    const addImages = useCallback((images: AttachmentPreview[]) => {
+        const oversized = images.filter(img => img.size > MAX_FILE_SIZE);
+        const admissible = images.filter(img => img.size <= MAX_FILE_SIZE);
+
+        const remaining = Math.max(0, MAX_IMAGES_PER_MESSAGE - selectedCountRef.current);
+        const accepted = admissible.slice(0, remaining);
+
+        if (accepted.length > 0) {
+            // Advance the count here rather than waiting for the effect above to
+            // reconcile it: two calls landing in the same tick would otherwise both
+            // read the same pre-append count and together overshoot the limit.
+            selectedCountRef.current += accepted.length;
+            setSelectedImages(prev => [...prev, ...accepted]);
+        }
+
+        if (oversized.length > 0) {
+            Modal.alert(
+                t('imageUpload.fileTooLargeTitle'),
+                oversized.length === 1
+                    ? t('imageUpload.fileTooLargeMessage', { name: oversized[0].name, maxMb: MAX_FILE_SIZE_MB })
+                    : t('imageUpload.filesTooLargeMessage', { count: oversized.length, maxMb: MAX_FILE_SIZE_MB }),
+                [{ text: t('common.ok') }],
+            );
+        } else if (admissible.length > accepted.length) {
+            Modal.alert(
+                t('imageUpload.limitTitle'),
+                t('imageUpload.limitMessage', { max: MAX_IMAGES_PER_MESSAGE }),
+                [{ text: t('common.ok') }],
+            );
+        }
+    }, []);
+
     const pickImages = useCallback(async () => {
         const hasPermission = await requestPermission();
         if (!hasPermission) return;
 
+        // Not the limit — addImages is. This only avoids opening a picker whose every
+        // result would be refused, and caps the OS selection UI to what will fit.
         const remaining = MAX_IMAGES_PER_MESSAGE - selectedCountRef.current;
         if (remaining <= 0) {
             Modal.alert(
@@ -77,43 +126,30 @@ export function useImagePicker(): UseImagePickerResult {
 
         if (result.canceled || !result.assets.length) return;
 
-        // On web, selectionLimit is not enforced by the browser — clamp here.
-        const assets = result.assets.slice(0, remaining);
         const previews: AttachmentPreview[] = [];
 
-        for (const asset of assets) {
-            const size = asset.fileSize ?? 0;
-
-            if (size > MAX_FILE_SIZE) {
-                Modal.alert(
-                    t('imageUpload.fileTooLargeTitle'),
-                    t('imageUpload.fileTooLargeMessage', { name: asset.fileName ?? 'image', maxMb: 10 }),
-                    [{ text: t('common.ok') }],
-                );
-                continue;
-            }
-
+        for (const asset of result.assets) {
             // Skip thumbhash if dimensions are unavailable (prevents divide-by-zero).
             const thumbhash = (asset.width > 0 && asset.height > 0)
                 ? await generateThumbhash(asset.uri, asset.width, asset.height)
                 : undefined;
 
             previews.push({
-                id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+                id: `pick_${Date.now()}_${Math.random().toString(36).slice(2)}`,
                 uri: asset.uri,
                 width: asset.width,
                 height: asset.height,
                 mimeType: asset.mimeType ?? 'image/jpeg',
-                size,
+                size: asset.fileSize ?? 0,
                 name: asset.fileName ?? `image_${Date.now()}.jpg`,
                 thumbhash,
             });
         }
 
-        if (previews.length > 0) {
-            setSelectedImages(prev => [...prev, ...previews].slice(0, MAX_IMAGES_PER_MESSAGE));
-        }
-    }, [requestPermission]);
+        // No size or count check here on purpose — addImages applies both, for every
+        // source. `selectionLimit` above is a courtesy to the OS picker, not the limit.
+        addImages(previews);
+    }, [requestPermission, addImages]);
 
     const removeImage = useCallback((id: string) => {
         setSelectedImages(prev => prev.filter(img => img.id !== id));
@@ -121,14 +157,6 @@ export function useImagePicker(): UseImagePickerResult {
 
     const clearImages = useCallback(() => {
         setSelectedImages([]);
-    }, []);
-
-    const addImages = useCallback((images: AttachmentPreview[]) => {
-        setSelectedImages(prev => {
-            const remaining = MAX_IMAGES_PER_MESSAGE - prev.length;
-            if (remaining <= 0) return prev;
-            return [...prev, ...images.slice(0, remaining)];
-        });
     }, []);
 
     return { selectedImages, pickImages, removeImage, clearImages, addImages };
