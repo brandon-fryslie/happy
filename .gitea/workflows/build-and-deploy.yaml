@@ -35,11 +35,6 @@ env:
   EXPO_DEV_IMAGE: happy-expo-dev
   NOMAD_ADDR: http://192.168.7.217:4646
   NOMAD_VERSION: "1.8.4"
-  # The SFU behind openconv, baked into the web bundle because a static export has
-  # no runtime config. One value for both targets: there is one LiveKit deployment.
-  # It must name the same provider as happy-server's VOICE_CONVAI_ORIGIN in
-  # home-infra — see docs/voice-architecture.md for what a mismatch looks like.
-  VOICE_LIVEKIT_URL: wss://livekit.sanctuary.gdn
 
 jobs:
   build-and-deploy:
@@ -59,6 +54,14 @@ jobs:
       # webapp) — the value declared into the contract. On the test path it is
       # "test", which the -test job specs pull. There is no separate :latest
       # axis: the prod jobs pull server_tag via image_tag, nothing pulls :latest.
+      #
+      # voice_livekit_url is per-target for the same reason server_url is: it has
+      # to name the SFU behind whatever ConvAI provider its paired happy-server
+      # mints against, and only the prod job sets VOICE_CONVAI_ORIGIN=openconv.
+      # happy-server-test still mints at ElevenLabs, so test builds get empty —
+      # which leaves the SDK on ElevenLabs' own SFU. A shared value would give the
+      # PR-validation environment a webapp dialing openconv and a server minting
+      # ElevenLabs tokens: no error, just a caller alone in a room.
       - name: Determine build target
         id: target
         run: |
@@ -71,16 +74,19 @@ jobs:
             echo "server_tag=test" >> "$GITHUB_OUTPUT"
             echo "extra_tag=pr-${{ gitea.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server-test.sanctuary.gdn" >> "$GITHUB_OUTPUT"
+            echo "voice_livekit_url=" >> "$GITHUB_OUTPUT"
           elif [ "${{ gitea.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.target }}" = "test" ]; then
             echo "env=test" >> "$GITHUB_OUTPUT"
             echo "server_tag=test" >> "$GITHUB_OUTPUT"
             echo "extra_tag=$SHA" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server-test.sanctuary.gdn" >> "$GITHUB_OUTPUT"
+            echo "voice_livekit_url=" >> "$GITHUB_OUTPUT"
           else
             echo "env=prod" >> "$GITHUB_OUTPUT"
             echo "server_tag=${{ steps.tag.outputs.image-tag }}" >> "$GITHUB_OUTPUT"
             echo "extra_tag=$SHA" >> "$GITHUB_OUTPUT"
             echo "server_url=https://happy-server.sanctuary.gdn" >> "$GITHUB_OUTPUT"
+            echo "voice_livekit_url=wss://livekit.sanctuary.gdn" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build server image
@@ -99,6 +105,7 @@ jobs:
           SERVER_TAG: ${{ steps.target.outputs.server_tag }}
           EXTRA_TAG: ${{ steps.target.outputs.extra_tag }}
           SERVER_URL: ${{ steps.target.outputs.server_url }}
+          VOICE_LIVEKIT_URL: ${{ steps.target.outputs.voice_livekit_url }}
         run: |
           set -euo pipefail
           docker build \

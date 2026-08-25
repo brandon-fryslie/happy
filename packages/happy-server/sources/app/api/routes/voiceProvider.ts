@@ -10,8 +10,9 @@
 /** ElevenLabs' own ConvAI origin. */
 export const ELEVENLABS_ORIGIN = "https://api.elevenlabs.io";
 
-/** The SFU every ElevenLabs-minted token admits to, and both SDKs' built-in default. */
-export const ELEVENLABS_LIVEKIT_URL = "wss://livekit.rtc.elevenlabs.io";
+// The SFU an ElevenLabs token admits to lives in the app's voiceProvider and only
+// there. The server never dials one, so a copy here would be a second thing to update
+// with nothing keeping the two equal. [LAW:one-source-of-truth]
 
 /** The path both ElevenLabs and openconv serve the ConvAI surface at. */
 const CONVAI_PATH = "/v1/convai";

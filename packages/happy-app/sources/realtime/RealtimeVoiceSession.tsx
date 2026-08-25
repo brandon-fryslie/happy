@@ -10,6 +10,13 @@ import type { VoiceSession, VoiceSessionConfig } from './types';
 // Static reference to the conversation hook instance
 let conversationInstance: ReturnType<typeof useConversation> | null = null;
 
+// The SFU the current render handed the SDK. The native hook fixes serverUrl at render
+// time and applies it through its own effect, so a session cannot be redirected once
+// startSession is called — which makes this the only chance to notice that the token
+// about to be presented was minted for a different provider. Written beside
+// conversationInstance because the two describe the same render.
+let dialedLivekitUrl: string | null = null;
+
 // VAD state for user speech detection
 const VAD_THRESHOLD = 0.5;
 const VAD_SILENCE_MS = 300;
@@ -34,6 +41,20 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             
             if (!config.conversationToken && !config.agentId) {
                 throw new Error('No conversationToken or agentId provided');
+            }
+
+            // [LAW:no-silent-failure] The caller decided the mint, fetched a token
+            // against it, and tells us which SFU that token is good at. This render
+            // decided independently, before the fetch. They disagree only when the
+            // voice settings changed mid-flight — which makes the whole call stale,
+            // not just its SFU: the token was minted with the other provider's agent
+            // and credentials. Dialing anyway lands the user in a room nobody is in
+            // and plays them silence, so say so instead.
+            if (config.livekitUrl !== dialedLivekitUrl) {
+                throw new Error(
+                    `Voice settings changed while this session was starting: the token was minted for ${config.livekitUrl}, `
+                    + `but the SDK is configured for ${dialedLivekitUrl}. Start the session again.`
+                );
             }
 
             const sessionConfig: any = {
@@ -195,8 +216,9 @@ export const RealtimeVoiceSession: React.FC = () => {
     const hasRegistered = useRef(false);
 
     useEffect(() => {
-        // Store the conversation instance globally
+        // Store the conversation instance globally, with the SFU this render gave it.
         conversationInstance = conversation;
+        dialedLivekitUrl = serverUrl;
 
         // Register the voice session once
         if (!hasRegistered.current) {
@@ -211,8 +233,9 @@ export const RealtimeVoiceSession: React.FC = () => {
         return () => {
             // Clean up on unmount
             conversationInstance = null;
+            dialedLivekitUrl = null;
         };
-    }, [conversation]);
+    }, [conversation, serverUrl]);
 
     // This component doesn't render anything visible
     return null;
