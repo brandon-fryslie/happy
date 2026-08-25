@@ -25,11 +25,13 @@ export type BlockedAttachmentSupport = Exclude<AttachmentSupport, 'supported'>;
  * "is this session image-capable" from raw metadata.
  */
 export function resolveAttachmentSupport(metadata: Metadata | null | undefined): AttachmentSupport {
-    // Only the Claude runner merges downloaded blobs into content blocks. Codex,
-    // Gemini, ACP and OpenClaw read message.content.text and ignore file events,
-    // and no CLI update changes that — so flavor is the first thing we answer on.
+    // Claude merges downloaded blobs into content blocks; Codex writes them to
+    // temp files and sends localImage input items. Both landed in the same
+    // 1.1.9 line, so one version floor covers them. Gemini, ACP and OpenClaw
+    // read message.content.text and ignore file events, and no CLI update
+    // changes that — so flavor is the first thing we answer on.
     const flavor = metadata?.flavor;
-    if (flavor && flavor !== 'claude') {
+    if (flavor && flavor !== 'claude' && flavor !== 'codex') {
         return 'unsupportedAgent';
     }
 

@@ -16,7 +16,7 @@ interface QueueItem<T, A> {
  * `A` is the attachment payload the queue ferries without inspecting. It
  * defaults to `never`, so an agent that has no attachment pipeline cannot be
  * handed one by mistake — only the runners that declare a payload type (today,
- * Claude) can push attachments at all. [LAW:types-are-the-program]
+ * Claude and Codex) can push attachments at all. [LAW:types-are-the-program]
  */
 export class MessageQueue2<T, A = never> {
     public queue: QueueItem<T, A>[] = []; // Made public for testing
