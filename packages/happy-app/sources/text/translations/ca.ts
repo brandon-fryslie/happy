@@ -1051,6 +1051,10 @@ export const ca: TranslationStructure = {
         limitMessage: ({ max }: { max: number }) => `Pots adjuntar fins a ${max} imatges per missatge.`,
         fileTooLargeTitle: 'Fitxer massa gran',
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" supera el límit de ${maxMb}MB i no s'ha afegit.`,
+        filesTooLargeMessage: ({ count, maxMb }: { count: number; maxMb: number }) => `${count} images exceed the ${maxMb}MB limit and were not added.`,
+        notAnImageTitle: 'Not an Image',
+        notAnImageMessage: 'Only image files can be attached to a message.',
+        dropOverlayTitle: 'Drop images to attach',
         uploadFailedTitle: 'Error en la càrrega',
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? 'No s\'ha pogut pujar una imatge i no s\'ha enviat.'

@@ -1053,6 +1053,10 @@ export const ja: TranslationStructure = {
         limitMessage: ({ max }: { max: number }) => `1メッセージに添付できる画像は最大${max}枚です。`,
         fileTooLargeTitle: 'ファイルが大きすぎます',
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"は${maxMb}MBの制限を超えているため追加されませんでした。`,
+        filesTooLargeMessage: ({ count, maxMb }: { count: number; maxMb: number }) => `${count} images exceed the ${maxMb}MB limit and were not added.`,
+        notAnImageTitle: 'Not an Image',
+        notAnImageMessage: 'Only image files can be attached to a message.',
+        dropOverlayTitle: 'Drop images to attach',
         uploadFailedTitle: 'アップロードに失敗しました',
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? '1枚の画像をアップロードできず、送信されませんでした。'

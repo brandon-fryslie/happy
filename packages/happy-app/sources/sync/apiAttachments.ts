@@ -12,8 +12,7 @@
  */
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { getServerUrl } from './serverConfig';
-
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+import { MAX_FILE_SIZE_MB } from './attachmentTypes';
 
 /**
  * If a self-hosted server's request-upload / request-download response points
@@ -69,7 +68,7 @@ export async function requestAttachmentUpload(
 
     if (!response.ok) {
         if (response.status === 413) {
-            throw new Error(`Attachment too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)`);
+            throw new Error(`Attachment too large (max ${MAX_FILE_SIZE_MB}MB)`);
         }
         if (response.status === 404) {
             throw new Error('Session not found');

@@ -1050,6 +1050,10 @@ export const it: TranslationStructure = {
         limitMessage: ({ max }: { max: number }) => `Puoi allegare fino a ${max} immagini per messaggio.`,
         fileTooLargeTitle: 'File troppo grande',
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" supera il limite di ${maxMb}MB e non è stato aggiunto.`,
+        filesTooLargeMessage: ({ count, maxMb }: { count: number; maxMb: number }) => `${count} images exceed the ${maxMb}MB limit and were not added.`,
+        notAnImageTitle: 'Not an Image',
+        notAnImageMessage: 'Only image files can be attached to a message.',
+        dropOverlayTitle: 'Drop images to attach',
         uploadFailedTitle: 'Caricamento non riuscito',
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? 'Un\'immagine non è stata caricata e non è stata inviata.'

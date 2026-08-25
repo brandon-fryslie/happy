@@ -1051,6 +1051,10 @@ export const zhHant: TranslationStructure = {
         limitMessage: ({ max }: { max: number }) => `每則訊息最多可附加 ${max} 張圖片。`,
         fileTooLargeTitle: '檔案太大',
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"超過了 ${maxMb}MB 的限制，未能新增。`,
+        filesTooLargeMessage: ({ count, maxMb }: { count: number; maxMb: number }) => `${count} images exceed the ${maxMb}MB limit and were not added.`,
+        notAnImageTitle: 'Not an Image',
+        notAnImageMessage: 'Only image files can be attached to a message.',
+        dropOverlayTitle: 'Drop images to attach',
         uploadFailedTitle: '上傳失敗',
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
             ? '一張圖片上傳失敗，未傳送。'

@@ -377,8 +377,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Forward ref to the MultiTextInput
     React.useImperativeHandle(ref, () => inputRef.current!, []);
 
-    // Web paste — intercept image pastes for the attachment feature.
-    // Drag-and-drop is not wired here yet; dropping a file still hits the browser.
+    // Web paste — intercept image pastes for the attachment feature. Drag-and-drop is
+    // the sibling event source, handled by useWebImageDrop where the overlay lives;
+    // both end in the same imageFilesToAttachments call and the same onAddImages prop.
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !props.onAddImages) return;
 
@@ -393,18 +394,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 || (active instanceof HTMLElement && active.isContentEditable);
             if (!isEditableTarget) return;
 
-            const { getImagesFromClipboard, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
+            const { getImagesFromClipboard, imageFilesToAttachments } = await import('@/utils/imageFiles.web');
             const files = getImagesFromClipboard(e);
             if (!files.length) return;
             e.preventDefault();
-            const previews = (await Promise.all(
-                files.map((f) => fileToAttachmentPreview(f, generateThumbhash))
-            )).filter(Boolean) as Omit<AttachmentPreview, 'id'>[];
-            if (previews.length) {
-                props.onAddImages!(previews.map((p) => ({
-                    ...p,
-                    id: `paste_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-                })));
+            const attachments = await imageFilesToAttachments(files, 'paste', generateThumbhash);
+            if (attachments.length) {
+                props.onAddImages!(attachments);
             }
         };
 
