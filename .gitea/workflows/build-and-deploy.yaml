@@ -35,6 +35,11 @@ env:
   EXPO_DEV_IMAGE: happy-expo-dev
   NOMAD_ADDR: http://192.168.7.217:4646
   NOMAD_VERSION: "1.8.4"
+  # The SFU behind openconv, baked into the web bundle because a static export has
+  # no runtime config. One value for both targets: there is one LiveKit deployment.
+  # It must name the same provider as happy-server's VOICE_CONVAI_ORIGIN in
+  # home-infra — see docs/voice-architecture.md for what a mismatch looks like.
+  VOICE_LIVEKIT_URL: wss://livekit.sanctuary.gdn
 
 jobs:
   build-and-deploy:
@@ -99,6 +104,7 @@ jobs:
           docker build \
             --file Dockerfile.webapp \
             --build-arg EXPO_PUBLIC_HAPPY_SERVER_URL="$SERVER_URL" \
+            --build-arg EXPO_PUBLIC_VOICE_LIVEKIT_URL="$VOICE_LIVEKIT_URL" \
             --tag "$REGISTRY/$WEBAPP_IMAGE:$SERVER_TAG" \
             --tag "$REGISTRY/$WEBAPP_IMAGE:$EXTRA_TAG" \
             .
