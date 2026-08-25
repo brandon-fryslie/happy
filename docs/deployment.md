@@ -44,7 +44,8 @@ This document describes how to deploy the Happy backend (`packages/happy-server`
 - GitHub OAuth/App: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, plus redirect URL/URI.
   - `GITHUB_REDIRECT_URL` is used by the OAuth callback handler.
   - `GITHUB_REDIRECT_URI` is used by the GitHub App initializer.
-- Voice: `ELEVENLABS_API_KEY` (required for `/v1/voice/conversations` in production).
+- Voice: `ELEVENLABS_API_KEY` (required for `/v1/voice/conversations` in production; presented as `xi-api-key` to whichever provider `VOICE_CONVAI_ORIGIN` names).
+- Voice provider: `VOICE_CONVAI_ORIGIN` (optional; the ConvAI origin the metered path mints against, e.g. `https://openconv.sanctuary.gdn`. Unset means ElevenLabs. It must name the same deployment the app's `EXPO_PUBLIC_VOICE_LIVEKIT_URL` points at — see `docs/voice-architecture.md`).
 - Subscriptions: `REVENUECAT_API_KEY` (server-side RevenueCat key, required for voice subscription checks).
 - Debug logging: `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` (enables file logging + dev log endpoint).
 

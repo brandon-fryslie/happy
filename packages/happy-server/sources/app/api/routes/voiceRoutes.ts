@@ -106,6 +106,9 @@ export function voiceRoutes(app: Fastify) {
 
         log({ module: 'voice' }, `Voice token request from user ${userId}`);
 
+        // Whatever VOICE_CONVAI_ORIGIN names gets this in `xi-api-key`. The name kept
+        // its ElevenLabs spelling because a self-hosted provider takes a shared secret
+        // in the same field, so pointing Happy elsewhere is one origin, not two moves.
         const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
         if (!elevenLabsApiKey) {
             return reply.code(500).send({ error: 'ELEVENLABS_API_KEY not configured' });
