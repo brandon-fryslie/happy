@@ -12,10 +12,21 @@ RealtimeVoiceSession.web.tsx  Web ElevenLabs bridge (same interface)
 voiceHooks.ts              Context delivery — formats and routes app events to voice agent
 contextFormatters.ts       Text formatters for session context, messages, permissions
 realtimeClientTools.ts     Tool implementations the voice agent can invoke
+voiceProvider.ts           Which ConvAI service mints a call, and which SFU its token is good at
 voiceConfig.ts             Feature flags and constants
 storage.ts                 Global state (realtimeStatus, realtimeMode)
 types.ts                   Shared type definitions
 ```
+
+## Voice Provider
+
+Two config values decide which ConvAI service a call runs on, and they have to name the same deployment. On the server, `VOICE_CONVAI_ORIGIN` is the origin the metered path mints tokens and queries usage against; unset means ElevenLabs. In the app, `EXPO_PUBLIC_VOICE_LIVEKIT_URL` is that provider's LiveKit deployment; unset means ElevenLabs' own SFU.
+
+They have to agree because the conversation token is a JWT signed by one provider's LiveKit keys. Present it to a different SFU and nothing errors — the client joins a room the agent is not in and the user hears silence. `voiceProvider.ts` on each side keeps its half in one place: `meteredConvaiApi()` on the server, and `voiceMint()` plus `livekitUrlFor()` in the app, which the native and web bridges both call so the two platforms cannot drift apart.
+
+The native bridge passes the URL as `serverUrl` on the `useConversation` hook; the web bridge passes `livekitUrl` to `startSession`. On web, do not reach for `origin` instead — that configures the WebSocket signaling path, which Happy never takes because it always supplies a `conversationToken`. Setting it moves nothing and looks like it worked.
+
+The BYO path is deliberately exempt. A user's own agent ID and API key are ElevenLabs credentials, so `/v1/voice/byo-token` calls ElevenLabs whatever `VOICE_CONVAI_ORIGIN` says, and `livekitUrlFor()` sends every BYO call to ElevenLabs' SFU.
 
 ## Session Routing
 

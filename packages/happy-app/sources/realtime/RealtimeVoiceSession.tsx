@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react-native';
 import { registerVoiceSession } from './RealtimeSession';
-import { storage } from '@/sync/storage';
+import { storage, useSettings } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
+import { livekitUrlFor, voiceMint } from './voiceProvider';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 
@@ -106,7 +107,14 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 }
 
 export const RealtimeVoiceSession: React.FC = () => {
+    // The native SDK fixes its SFU when the hook renders, not when a session starts —
+    // so this reads the settings the mint is decided from, and re-renders with them.
+    // The web variant takes the same value per session; both get it from voiceProvider
+    // so the two platforms cannot disagree about where a token is good.
+    const serverUrl = livekitUrlFor(voiceMint(useSettings()));
+
     const conversation = useConversation({
+        serverUrl,
         clientTools: realtimeClientTools,
         onConnect: (data) => {
             console.log('Realtime session connected:', data);

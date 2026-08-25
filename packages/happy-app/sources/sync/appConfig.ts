@@ -9,6 +9,11 @@ export interface AppConfig {
     elevenLabsAgentId?: string;
     consoleLoggingDefault?: boolean;
     serverUrl?: string;
+    /**
+     * LiveKit deployment behind the ConvAI provider Happy's server mints against.
+     * Unset means ElevenLabs' own. See `realtime/voiceProvider.ts`.
+     */
+    voiceLivekitUrl?: string;
 }
 
 /**
@@ -83,6 +88,10 @@ export function loadAppConfig(): AppConfig {
     if (process.env.EXPO_PUBLIC_POSTHOG_KEY && config.postHogKey !== process.env.EXPO_PUBLIC_POSTHOG_KEY) {
         console.log('[loadAppConfig] Override postHogKey from EXPO_PUBLIC_POSTHOG_KEY');
         config.postHogKey = process.env.EXPO_PUBLIC_POSTHOG_KEY;
+    }
+    if (process.env.EXPO_PUBLIC_VOICE_LIVEKIT_URL && config.voiceLivekitUrl !== process.env.EXPO_PUBLIC_VOICE_LIVEKIT_URL) {
+        console.log('[loadAppConfig] Override voiceLivekitUrl from EXPO_PUBLIC_VOICE_LIVEKIT_URL');
+        config.voiceLivekitUrl = process.env.EXPO_PUBLIC_VOICE_LIVEKIT_URL;
     }
     if (process.env.EXPO_PUBLIC_SERVER_URL && config.serverUrl !== process.env.EXPO_PUBLIC_SERVER_URL) {
         console.log('[loadAppConfig] Override serverUrl from EXPO_PUBLIC_SERVER_URL');

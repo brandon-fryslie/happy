@@ -46,6 +46,10 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             }
 
             const sessionConfig: any = {
+                // Not `origin`: that configures the WebSocket signaling path, which this
+                // client never takes because it always supplies a conversationToken.
+                // Setting it moves nothing and looks like it did.
+                livekitUrl: config.livekitUrl,
                 dynamicVariables: {
                     sessionId: config.sessionId,
                     initialConversationContext: config.initialContext || ''

@@ -206,6 +206,7 @@ export default {
                 revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
                 revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE,
                 elevenLabsAgentId,
+                voiceLivekitUrl: process.env.EXPO_PUBLIC_VOICE_LIVEKIT_URL,
                 consoleLoggingDefault,
             }
         },

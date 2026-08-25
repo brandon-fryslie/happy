@@ -15,6 +15,7 @@ import {
     incrementVoiceSoftPaywallShown,
 } from '@/sync/persistence';
 import { buildVoiceFirstMessage, buildVoiceSystemPrompt } from './voiceSystemPrompt';
+import { livekitUrlFor, voiceMint } from './voiceProvider';
 import { getVoiceUpsellVariant } from './voiceExperiment';
 
 let voiceSession: VoiceSession | null = null;
@@ -61,8 +62,8 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
 
         // BYO bypass — user-supplied agent + API key. Server mints with the user's key,
         // returning the same {conversationToken, conversationId, agentId} shape as the gated path.
-        const { voiceBypassToken, voiceCustomAgentId, voiceCustomElevenLabsApiKey } = storage.getState().settings;
-        if (voiceBypassToken && (!voiceCustomAgentId || !voiceCustomElevenLabsApiKey)) {
+        const mint = voiceMint(storage.getState().settings);
+        if (mint.kind === 'byo-incomplete') {
             storage.getState().setRealtimeStatus('disconnected');
             Modal.alert(
                 t('common.error'),
@@ -70,15 +71,16 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             );
             return null;
         }
-        if (voiceBypassToken && voiceCustomAgentId && voiceCustomElevenLabsApiKey) {
-            console.log('[Voice] BYO mint via server, agent:', voiceCustomAgentId);
-            const byo = await fetchByoVoiceToken(credentials, voiceCustomAgentId, voiceCustomElevenLabsApiKey);
+        if (mint.kind === 'byo') {
+            console.log('[Voice] BYO mint via server, agent:', mint.agentId);
+            const byo = await fetchByoVoiceToken(credentials, mint.agentId, mint.apiKey);
             currentSessionId = sessionId;
             const startedConversationId = await voiceSession.startSession({
                 sessionId,
                 initialContext,
                 conversationToken: byo.conversationToken,
                 agentId: byo.agentId,
+                livekitUrl: livekitUrlFor(mint),
             });
             currentVoiceConversationId = byo.conversationId ?? startedConversationId;
             currentVoiceSessionStartedAt = Date.now();
@@ -152,6 +154,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             conversationToken: response.conversationToken,
             agentId: response.agentId,
             userId: response.elevenUserId,
+            livekitUrl: livekitUrlFor(mint),
         });
         if (!hasPro && voiceUpsellVariant === 'voice-onboarding-and-upsell') {
             incrementVoiceOnboardingPromptLoadCount();

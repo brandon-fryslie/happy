@@ -8,11 +8,11 @@ import {
 } from "@slopus/happy-wire";
 import { type Fastify } from "../types";
 import { log } from "@/utils/log";
+import { BYO_CONVAI_API, meteredConvaiApi } from "./voiceProvider";
 
 const VOICE_FREE_LIMIT_SECONDS = 1200;  // 20 minutes free tier per 30 days (~$0.76 cost)
 const VOICE_HARD_LIMIT_SECONDS = 18000; // 5 hours absolute cap per 30 days (even with subscription)
 const VOICE_MAX_CONVERSATIONS = 100;    // Max conversations trackable per 30 days (ElevenLabs page_size limit)
-const ELEVEN_LABS_API = "https://api.elevenlabs.io/v1/convai";
 
 function deriveElevenUserId(happyUserId: string): string {
     const hmac = crypto.createHmac("sha256", process.env.HANDY_MASTER_SECRET!);
@@ -28,12 +28,13 @@ function deriveElevenUserId(happyUserId: string): string {
 
 /**
  * Get a user's voice usage in seconds over the last 30 days.
- * Queries ElevenLabs directly by user_id (set via participant_name on token mint).
- * ElevenLabs is the source of truth — no local DB needed.
+ * Queries the ConvAI provider directly by user_id (set via participant_name on token
+ * mint). The provider is the source of truth — no local DB needed.
  *
  * Returns { usedSeconds, conversationCount }.
  */
 async function getVoiceUsage(
+    convaiApi: string,
     elevenLabsApiKey: string,
     elevenUserId: string,
 ): Promise<{ usedSeconds: number; conversationCount: number }> {
@@ -41,12 +42,12 @@ async function getVoiceUsage(
 
     // Query across all agents — usage is per-user, not per-agent
     const res = await fetch(
-        `${ELEVEN_LABS_API}/conversations?user_id=${elevenUserId}&created_after=${thirtyDaysAgo}&page_size=100`,
+        `${convaiApi}/conversations?user_id=${elevenUserId}&created_after=${thirtyDaysAgo}&page_size=100`,
         { headers: { "xi-api-key": elevenLabsApiKey } }
     );
 
     if (!res.ok) {
-        log({ module: 'voice' }, `ElevenLabs conversations query failed: ${res.status}`);
+        log({ module: 'voice' }, `ConvAI conversations query failed: ${res.status}`);
         return { usedSeconds: 0, conversationCount: 0 };
     }
 
@@ -114,9 +115,10 @@ export function voiceRoutes(app: Fastify) {
         }
 
         const elevenUserId = deriveElevenUserId(userId);
+        const convaiApi = meteredConvaiApi(process.env);
 
-        // Check usage from ElevenLabs directly
-        const { usedSeconds, conversationCount } = await getVoiceUsage(elevenLabsApiKey, elevenUserId);
+        // Check usage from the provider directly
+        const { usedSeconds, conversationCount } = await getVoiceUsage(convaiApi, elevenLabsApiKey, elevenUserId);
         log({ module: 'voice' }, `User ${userId}: ${usedSeconds}s used, ${conversationCount} convos (free=${VOICE_FREE_LIMIT_SECONDS}s, hard=${VOICE_HARD_LIMIT_SECONDS}s)`);
 
         // Conversation count cap — we can only track 100 per query (ElevenLabs page_size limit)
@@ -159,7 +161,7 @@ export function voiceRoutes(app: Fastify) {
         // Get conversation token (JWT for WebRTC) with user identity
         try {
             const tokenRes = await fetch(
-                `${ELEVEN_LABS_API}/conversation/token?agent_id=${agentId}&participant_name=${elevenUserId}`,
+                `${convaiApi}/conversation/token?agent_id=${agentId}&participant_name=${elevenUserId}`,
                 { headers: { 'xi-api-key': elevenLabsApiKey } }
             );
 
@@ -190,7 +192,7 @@ export function voiceRoutes(app: Fastify) {
                 limitSeconds: usedSeconds >= VOICE_FREE_LIMIT_SECONDS ? VOICE_HARD_LIMIT_SECONDS : VOICE_FREE_LIMIT_SECONDS,
             });
         } catch (error) {
-            log({ module: 'voice' }, `ElevenLabs request error for user ${userId}: ${error}`);
+            log({ module: 'voice' }, `ConvAI request error for user ${userId} against ${convaiApi}: ${error}`);
             return reply.code(500).send({ error: 'Failed to get voice credentials' });
         }
     });
@@ -200,6 +202,9 @@ export function voiceRoutes(app: Fastify) {
      * User supplies their own agent ID + API key; server forwards to ElevenLabs
      * and returns the short-lived conversation token. Never logs or stores the API key.
      * Bypasses Happy usage gating — the user pays ElevenLabs directly.
+     *
+     * Stays on ElevenLabs whatever VOICE_CONVAI_ORIGIN says: the credential is the
+     * user's, and it is an ElevenLabs credential.
      */
     app.post('/v1/voice/byo-token', {
         preHandler: app.authenticate,
@@ -219,7 +224,7 @@ export function voiceRoutes(app: Fastify) {
 
         try {
             const tokenRes = await fetch(
-                `${ELEVEN_LABS_API}/conversation/token?agent_id=${encodeURIComponent(agentId)}`,
+                `${BYO_CONVAI_API}/conversation/token?agent_id=${encodeURIComponent(agentId)}`,
                 { headers: { 'xi-api-key': apiKey } }
             );
 
@@ -271,7 +276,7 @@ export function voiceRoutes(app: Fastify) {
 
         try {
             const [{ usedSeconds, conversationCount }, subscribed] = await Promise.all([
-                getVoiceUsage(elevenLabsApiKey, elevenUserId),
+                getVoiceUsage(meteredConvaiApi(process.env), elevenLabsApiKey, elevenUserId),
                 hasActiveSubscription(userId),
             ]);
             return reply.send({
