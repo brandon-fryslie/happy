@@ -5,6 +5,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useTtsAutoMode } from '@/hooks/useTtsAutoMode';
+import { useHandsFreePermissions } from '@/hooks/useHandsFreePermissions';
 import type { TtsPlayer } from '@/hooks/useTtsPlayer';
 import { Modal } from '@/modal';
 import { t } from '@/text';
@@ -24,6 +25,11 @@ export const TtsControlBar = React.memo(function TtsControlBar(props: {
     // the user toggling autoMode without disabling ttsEnabled. The hook itself no-ops when
     // autoMode is false.
     useTtsAutoMode(sessionId, player);
+
+    // Mounted on the same terms and for the same reason: in hands-free mode the loop must survive a
+    // permission prompt, which otherwise stops the agent until someone taps the screen. No-ops
+    // outside hands-free.
+    useHandsFreePermissions(sessionId);
 
     const [, doPlay] = useHappyAction(async () => {
         await player.play('continue');

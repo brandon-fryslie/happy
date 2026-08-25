@@ -20,7 +20,9 @@ export type AudioClaim =
     /** A LiveKit/ConvAI voice conversation is live: microphone open, duplex audio. */
     | 'voice-conversation'
     /** Hands-free TTS: the app speaks agent replies with the screen off or backgrounded. */
-    | 'hands-free-speech';
+    | 'hands-free-speech'
+    /** Hands-free listening: recording a spoken yes/no answer with the screen off or backgrounded. */
+    | 'hands-free-listen';
 
 type ClaimRequirements = {
     readonly allowsRecording: boolean;
@@ -32,6 +34,9 @@ type ClaimRequirements = {
 const CLAIM_REQUIREMENTS: Record<AudioClaim, ClaimRequirements> = {
     'voice-conversation': { allowsRecording: true, shouldPlayInBackground: false },
     'hands-free-speech': { allowsRecording: false, shouldPlayInBackground: true },
+    // Recording AND background: the yes/no answer to a permission prompt is spoken while the screen
+    // is off, which is the whole point of the hands-free loop.
+    'hands-free-listen': { allowsRecording: true, shouldPlayInBackground: true },
 };
 
 /**

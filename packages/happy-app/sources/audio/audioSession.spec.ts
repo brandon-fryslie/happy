@@ -38,8 +38,30 @@ describe('deriveAudioMode', () => {
         expect(mode('voice-conversation')).toMatchObject({ shouldPlayInBackground: false });
     });
 
+    it('opens the microphone in the background to hear a permission answer', () => {
+        // Listening for a spoken yes/no needs both halves at once: hands-free-speech alone cannot
+        // record, and voice-conversation alone dies when the screen locks.
+        expect(mode('hands-free-listen')).toMatchObject({
+            allowsRecording: true,
+            shouldPlayInBackground: true,
+        });
+    });
+
+    it('keeps background playback while listening, so speaking and hearing can overlap', () => {
+        // The permission loop holds both: it has just finished speaking the prompt and is now
+        // recording the answer. Releasing the listen claim must not end background speech.
+        expect(mode('hands-free-speech', 'hands-free-listen')).toMatchObject({
+            allowsRecording: true,
+            shouldPlayInBackground: true,
+        });
+        expect(mode('hands-free-speech')).toMatchObject({
+            allowsRecording: false,
+            shouldPlayInBackground: true,
+        });
+    });
+
     it('never lets the hardware mute switch silence the agent', () => {
-        for (const m of [mode(), mode('voice-conversation'), mode('hands-free-speech')]) {
+        for (const m of [mode(), mode('voice-conversation'), mode('hands-free-speech'), mode('hands-free-listen')]) {
             expect(m.playsInSilentMode).toBe(true);
         }
     });

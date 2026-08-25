@@ -1,4 +1,4 @@
-import { setAudioModeAsync } from 'expo-audio';
+import { setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import { AsyncLock } from '@/utils/lock';
 import { log } from '@/log';
 import { deriveAudioMode, type AudioClaim } from './audioSessionMode';
@@ -42,11 +42,22 @@ async function apply(): Promise<void> {
     // it here would recreate the bug one layer down.
     await lock.inLock(async () => {
         const mode = deriveAudioMode(activeClaims);
+        // Configuring the session is not the same as holding it. On iOS the thing that actually keeps
+        // a backgrounded app running is an ACTIVE AVAudioSession — UIBackgroundModes:audio grants
+        // execution while audio is live, not to an idle app. expo-audio activates implicitly when
+        // playback starts, which is too late for a claim whose job is to be ready before there is
+        // anything to play. Claiming is therefore both operations, and releasing the last claim hands
+        // the session back so other apps resume.
+        const active = activeClaims.size > 0;
         // [LAW:no-silent-failure] This session's failure mode is silence, which is indistinguishable
         // from "nothing to say". Recording what was actually written — and on whose behalf — is the
         // only way a missing voice can be traced back to a session that was never configured.
-        log.log(`[audio] claims=[${[...activeClaims].join(',')}] background=${mode.shouldPlayInBackground} recording=${mode.allowsRecording}`);
+        log.log(`[audio] claims=[${[...activeClaims].join(',')}] background=${mode.shouldPlayInBackground} recording=${mode.allowsRecording} active=${active}`);
+        // [LAW:dataflow-not-control-flow] Both writes happen on every claim change, including the
+        // change to zero claims. Skipping either when "nothing is claimed" is exactly how the session
+        // ends up latched in a state nobody wrote deliberately.
         await setAudioModeAsync(mode);
+        await setIsAudioActiveAsync(active);
     });
 }
 
