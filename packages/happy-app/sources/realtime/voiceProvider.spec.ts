@@ -9,8 +9,13 @@ vi.mock('@/config', () => ({
     config: { voiceLivekitUrl: 'wss://livekit.sanctuary.gdn' },
 }));
 
-const { ELEVENLABS_LIVEKIT_URL, HAPPY_LIVEKIT_URL, livekitUrlFor, voiceMint } =
-    await import('./voiceProvider');
+const {
+    ELEVENLABS_LIVEKIT_URL,
+    HAPPY_LIVEKIT_URL,
+    livekitUrlFor,
+    requireMintAndDialAgree,
+    voiceMint,
+} = await import('./voiceProvider');
 
 function settings(overrides: Partial<Settings>): Settings {
     return {
@@ -58,5 +63,23 @@ describe('livekitUrlFor', () => {
         expect(livekitUrlFor({ kind: 'byo', agentId: 'a', apiKey: 'k' }))
             .toBe(ELEVENLABS_LIVEKIT_URL);
         expect(livekitUrlFor({ kind: 'byo-incomplete' })).toBe(ELEVENLABS_LIVEKIT_URL);
+    });
+});
+
+describe('requireMintAndDialAgree', () => {
+    it('lets a session through when the SDK is pointed where the token is good', () => {
+        expect(() => requireMintAndDialAgree(HAPPY_LIVEKIT_URL, HAPPY_LIVEKIT_URL))
+            .not.toThrow();
+    });
+
+    it('stops the call the settings changed under, naming both providers', () => {
+        // The live case: a Happy-minted token in hand, the hook re-rendered onto
+        // ElevenLabs' SFU because BYO was toggled during the fetch.
+        expect(() => requireMintAndDialAgree(ELEVENLABS_LIVEKIT_URL, HAPPY_LIVEKIT_URL))
+            .toThrow(/minted for wss:\/\/livekit\.sanctuary\.gdn.*configured for wss:\/\/livekit\.rtc\.elevenlabs\.io/);
+    });
+
+    it('stops a call started before any render configured the SDK', () => {
+        expect(() => requireMintAndDialAgree(null, HAPPY_LIVEKIT_URL)).toThrow();
     });
 });

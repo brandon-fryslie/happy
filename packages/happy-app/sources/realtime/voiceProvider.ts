@@ -54,3 +54,27 @@ export function livekitUrlFor(mint: VoiceMint): string {
     // did it would be with the user's ElevenLabs key.
     return mint.kind === 'happy' ? HAPPY_LIVEKIT_URL : ELEVENLABS_LIVEKIT_URL;
 }
+
+/**
+ * Refuses a session whose token was minted for one provider while the SDK is configured
+ * to dial another's SFU.
+ *
+ * [LAW:no-silent-failure] Only the native bridge needs this, and only because the React
+ * Native SDK fixes its `serverUrl` when the hook renders: the mint is chosen, a token is
+ * fetched, and by the time the answer arrives the render that configured the SDK is
+ * already in the past. They disagree exactly when the voice settings changed during that
+ * fetch, which makes the whole call stale — the token carries the other provider's agent
+ * and credentials, not merely the wrong SFU. Dialing anyway is the failure this feature
+ * exists to prevent, and it is inaudible: the caller joins a room nobody is in.
+ *
+ * A free function rather than a line inside the bridge so the comparison can be tested
+ * without standing up the SDK.
+ */
+export function requireMintAndDialAgree(dialed: string | null, minted: string): void {
+    if (dialed !== minted) {
+        throw new Error(
+            `Voice settings changed while this session was starting: the token was minted for ${minted}, `
+            + `but the SDK is configured for ${dialed}. Start the session again.`
+        );
+    }
+}

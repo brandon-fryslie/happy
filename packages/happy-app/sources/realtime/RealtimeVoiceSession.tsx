@@ -3,7 +3,7 @@ import { useConversation } from '@elevenlabs/react-native';
 import { registerVoiceSession } from './RealtimeSession';
 import { storage, useSettings } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
-import { livekitUrlFor, voiceMint } from './voiceProvider';
+import { livekitUrlFor, requireMintAndDialAgree, voiceMint } from './voiceProvider';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 
@@ -43,19 +43,10 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                 throw new Error('No conversationToken or agentId provided');
             }
 
-            // [LAW:no-silent-failure] The caller decided the mint, fetched a token
-            // against it, and tells us which SFU that token is good at. This render
-            // decided independently, before the fetch. They disagree only when the
-            // voice settings changed mid-flight — which makes the whole call stale,
-            // not just its SFU: the token was minted with the other provider's agent
-            // and credentials. Dialing anyway lands the user in a room nobody is in
-            // and plays them silence, so say so instead.
-            if (config.livekitUrl !== dialedLivekitUrl) {
-                throw new Error(
-                    `Voice settings changed while this session was starting: the token was minted for ${config.livekitUrl}, `
-                    + `but the SDK is configured for ${dialedLivekitUrl}. Start the session again.`
-                );
-            }
+            // The caller decided the mint and fetched a token against it; this render
+            // configured the SDK before that fetch returned. See the law citation on
+            // requireMintAndDialAgree for why a disagreement ends the call.
+            requireMintAndDialAgree(dialedLivekitUrl, config.livekitUrl);
 
             const sessionConfig: any = {
                 // conversationToken (WebRTC JWT from server) or agentId (bypass mode)
