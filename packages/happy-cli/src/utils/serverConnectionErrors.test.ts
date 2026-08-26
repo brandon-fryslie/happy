@@ -10,7 +10,7 @@
  * ## Requirements Verified
  * - REQ-1: Continue working when server unreachable (via graceful callback pattern)
  * - REQ-3: Exponential backoff (via retry tests)
- * - REQ-7: User notification (via onNotify callback verification)
+ * - REQ-7: User notification (recovery on the terminal, auth failure via onNotify)
  * - REQ-8: DRY implementation (single utility, verified by type system)
  * - REQ-9: Backend transparency (via generic TSession tests)
  */
@@ -108,12 +108,11 @@ describe('startOfflineReconnection', () => {
 
     describe('successful reconnection', () => {
         it('should call onReconnected when health check succeeds', async () => {
-            const { handle, onReconnected, onNotify } = createTestHandle();
+            const { handle, onReconnected } = createTestHandle();
 
             await waitForReconnection(handle);
 
             expect(onReconnected).toHaveBeenCalledOnce();
-            expect(onNotify).toHaveBeenCalledWith('✅ Reconnected! Session syncing in background.');
             expect(handle.isReconnected()).toBe(true);
 
             handle.cancel();
@@ -368,7 +367,7 @@ describe('startOfflineReconnection', () => {
             expect(onNotify).not.toHaveBeenCalledWith(
                 expect.stringContaining('Authentication failed')
             );
-            expect(onNotify).toHaveBeenCalledWith('✅ Reconnected! Session syncing in background.');
+            expect(handle.isReconnected()).toBe(true);
 
             handle.cancel();
         }, 20000);
@@ -543,6 +542,79 @@ describe('printOfflineWarning', () => {
         // Should not print again (same call count)
         expect(callCountAfterSecond).toBe(callCountAfterFirst);
 
+        consoleSpy.mockRestore();
+    });
+});
+
+// ============================================================================
+// Connection banner lifecycle - the terminal tracks the CURRENT state
+// ============================================================================
+
+describe('connectionState banner lifecycle', () => {
+    beforeEach(() => {
+        connectionState.reset();
+    });
+
+    it('retracts the unreachable banner on the same channel that raised it', () => {
+        const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
+
+        connectionState.fail({ operation: 'Machine registration', errorCode: '502' });
+        expect(consoleSpy).toHaveBeenCalledWith(
+            expect.stringContaining('⚠️  Happy server unreachable')
+        );
+
+        // No reconnection loop exists on this path - recovery is reported by the
+        // successful API call itself, and must still reach the terminal.
+        connectionState.recover();
+        expect(consoleSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Happy server reachable again')
+        );
+        expect(connectionState.isOffline()).toBe(false);
+
+        consoleSpy.mockRestore();
+    });
+
+    it('stays silent when recovery is reported while already online', () => {
+        const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
+
+        // Every successful call reports unconditionally; only the edge prints.
+        connectionState.recover();
+        connectionState.recover();
+
+        expect(consoleSpy).not.toHaveBeenCalled();
+
+        consoleSpy.mockRestore();
+    });
+
+    it('re-arms the warning so a later outage is announced again', () => {
+        const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
+
+        connectionState.fail({ operation: 'Session creation', errorCode: '502' });
+        connectionState.recover();
+        consoleSpy.mockClear();
+
+        connectionState.fail({ operation: 'Session creation', errorCode: 'ECONNREFUSED' });
+
+        expect(consoleSpy).toHaveBeenCalledWith(
+            expect.stringContaining('⚠️  Happy server unreachable')
+        );
+
+        consoleSpy.mockRestore();
+    });
+
+    it('announces recovery when the reconnection loop succeeds', async () => {
+        const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
+        connectionState.fail({ operation: 'Session creation', errorCode: '502' });
+        consoleSpy.mockClear();
+
+        const { handle } = createTestHandle();
+        await waitForReconnection(handle);
+
+        expect(consoleSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Happy server reachable again')
+        );
+
+        handle.cancel();
         consoleSpy.mockRestore();
     });
 });

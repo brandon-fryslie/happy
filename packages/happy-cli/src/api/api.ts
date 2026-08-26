@@ -76,6 +76,10 @@ export class ApiClient {
       )
 
       logger.debug(`Session created/loaded: ${response.data.session.id} (tag: ${opts.tag})`)
+      // [LAW:one-source-of-truth] Report the observation from the mirror position of
+      // the fail() calls below, so the banner is retracted by the same evidence that
+      // would have raised it. No-op unless we were actually showing one.
+      connectionState.recover();
       let raw = response.data.session;
       let session: Session = {
         id: raw.id,
@@ -199,6 +203,10 @@ export class ApiClient {
 
       const raw = response.data.machine;
       logger.debug(`[API] Machine ${opts.machineId} registered/updated with server`);
+      // Mirror of the fail() calls below. This path has no reconnection loop to
+      // announce recovery, so without this a machine-registration blip leaves the
+      // unreachable banner on screen forever.
+      connectionState.recover();
 
       // Return decrypted machine like we do for sessions
       const machine: Machine = {

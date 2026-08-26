@@ -68,7 +68,12 @@ export interface OfflineReconnectionConfig<TSession> {
      */
     onReconnected: () => Promise<TSession>;
 
-    /** Called to notify user of status changes (success or auth failure) */
+    /**
+     * Called when reconnection stops permanently and the user must act (auth failure).
+     * Success is NOT reported here - connectionState owns both connection-state edges,
+     * so the recovery message is printed there and reaches the user on every path,
+     * including the ones that never started a reconnection loop.
+     */
     onNotify: (message: string) => void;
 
     /** Optional cleanup callback invoked when cancel() is called */
@@ -189,9 +194,11 @@ export function startOfflineReconnection<TSession>(
             // Note: session is set even if cancelled - the operation completed
             if (cancelled) return;
 
-            // Step 3: Mark success and notify user
+            // Step 3: Mark success. [LAW:single-enforcer] connectionState is the one
+            // announcer of the online/offline edges - it prints iff the terminal is
+            // still showing an unreachable banner that needs retracting.
             reconnected = true;
-            config.onNotify('✅ Reconnected! Session syncing in background.');
+            connectionState.recover();
             logger.debug('[OfflineReconnection] Successfully reconnected');
         } catch (e: unknown) {
             // Check for permanent errors that shouldn't be retried
@@ -276,12 +283,22 @@ export type OfflineFailure = {
 };
 
 /**
- * Coordinates offline warnings across multiple API callers.
+ * Sole owner and announcer of the CLI's server-reachability state.
  *
- * When server goes down, session + machine API calls both fail. This class
- * consolidates those into one clear message with all failure details, then
- * suppresses duplicates until recovery. Call recover() when back online to
- * re-enable warnings for future disconnections.
+ * Connection state has two transitions and both are announced here, on the same
+ * user-facing channel: whatever is entitled to print "unreachable" is equally
+ * responsible for printing the transition back. Callers only *report* what they
+ * observed - fail() on a network/gateway error, recover() on any successful
+ * server call - and this class decides what the user is told.
+ *
+ * [LAW:one-source-of-truth] The terminal must track the current connection state,
+ * not the worst state ever observed. Recovery announced anywhere else (e.g. a
+ * per-caller callback on the reconnection loop) is a second clock: it misses every
+ * failure path that has no reconnection loop, which is how a transient 502 during
+ * a server rollout read as a permanent outage.
+ *
+ * When the server goes down, session + machine API calls both fail; failures are
+ * accumulated into one message and duplicates suppressed until recovery.
  */
 class OfflineState {
     private state: 'online' | 'offline' = 'online';
@@ -293,13 +310,20 @@ class OfflineState {
         this.failures.set(failure.operation, failure);
         if (this.state === 'online') {
             this.state = 'offline';
-            this.print();
+            this.printOffline();
         }
     }
 
-    /** Reset on reconnection */
+    /**
+     * Report that a server call succeeded. Prints the retraction on the offline ->
+     * online edge only, mirroring fail(); a no-op while already online, so every
+     * successful call can report unconditionally.
+     */
     recover(): void {
-        this.state = 'online';
+        if (this.state === 'offline') {
+            this.state = 'online';
+            this.printOnline();
+        }
         this.failures.clear();
     }
 
@@ -316,7 +340,11 @@ class OfflineState {
         this.backend = 'Claude';
     }
 
-    private print(): void {
+    private printOnline(): void {
+        console.log(chalk.green('✅ Happy server reachable again, back online.'));
+    }
+
+    private printOffline(): void {
         const summary = [...this.failures.values()]
             .map(f => {
                 const desc = f.errorCode
