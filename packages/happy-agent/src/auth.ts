@@ -3,6 +3,7 @@ import tweetnacl from 'tweetnacl';
 import qrcode from 'qrcode-terminal';
 import { encodeBase64, encodeBase64Url, decodeBase64, decryptBoxBundle, getRandomBytes } from './encryption';
 import { writeCredentials, clearCredentials, readCredentials } from './credentials';
+import { HAPPY_CLIENT_ID } from './config';
 import type { Config } from './config';
 
 const POLL_INTERVAL_MS = 1000;
@@ -25,7 +26,7 @@ export async function authLogin(config: Config): Promise<void> {
         await axios.post(`${config.serverUrl}/v1/auth/account/request`, {
             publicKey: publicKeyBase64,
         }, {
-            headers: { 'X-Happy-Client': 'cli-control-plane/0.1.0' },
+            headers: { 'X-Happy-Client': HAPPY_CLIENT_ID },
         });
     } catch (err) {
         if (err instanceof AxiosError) {
@@ -57,7 +58,7 @@ export async function authLogin(config: Config): Promise<void> {
             const resp = await axios.post(`${config.serverUrl}/v1/auth/account/request`, {
                 publicKey: publicKeyBase64,
             }, {
-                headers: { 'X-Happy-Client': 'cli-control-plane/0.1.0' },
+                headers: { 'X-Happy-Client': HAPPY_CLIENT_ID },
             });
             result = resp.data as AuthRequestResponse;
         } catch (err) {
