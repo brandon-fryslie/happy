@@ -21,6 +21,7 @@ import { TtsControlBar } from '@/components/TtsControlBar';
 import { useTtsPlayer } from '@/hooks/useTtsPlayer';
 import { useDraft } from '@/hooks/useDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
+import { takeAttachments } from '@/sync/attachmentQueue';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -376,7 +377,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Image attachment state (expImageUpload feature flag)
     const expImageUpload = useSetting('expImageUpload');
-    const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
+    const { selectedImages, pickImages, removeImage, addImages } = useImagePicker(sessionId);
 
     // Sessions whose host can't take images keep the strip (so anything already
     // queued stays visible and removable) but lose the ways to add more. The
@@ -540,12 +541,18 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }}
             blockSend={false}
             onSend={() => {
-                if (message.trim() || (expImageUpload && selectedImages.length > 0)) {
-                    const attachments = expImageUpload ? selectedImages : undefined;
+                if (message.trim() || selectedImages.length > 0) {
                     setMessage('');
                     clearDraft();
-                    if (expImageUpload) clearImages();
-                    sync.sendMessage(sessionId, message, { source: 'chat', attachments });
+                    // [LAW:one-source-of-truth] The queue is consumed and cleared in one
+                    // step, by the same call the voice tool makes. Sending what is
+                    // visible in the strip — rather than a separately flag-filtered copy
+                    // of it — is what keeps the two senders from ever disagreeing about
+                    // which images went out.
+                    sync.sendMessage(sessionId, message, {
+                        source: 'chat',
+                        attachments: takeAttachments(sessionId),
+                    });
                 }
             }}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
@@ -553,9 +560,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onAbort={isDisconnected ? undefined : () => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments && !isTablet ? () => router.push(`/session/${sessionId}/files`) : undefined}
-            selectedImages={expImageUpload ? selectedImages : undefined}
+            // The strip and its remove button are never flag-gated: they show whatever
+            // is queued, and an empty queue renders nothing. Hiding a non-empty queue
+            // behind a flag would send images the user could no longer see or remove.
+            selectedImages={selectedImages}
             onPickImages={canAddImages ? pickImages : undefined}
-            onRemoveImage={expImageUpload ? removeImage : undefined}
+            onRemoveImage={removeImage}
             onAddImages={onAddImages}
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}

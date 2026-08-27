@@ -122,6 +122,11 @@ export function formatSessionFocus(sessionId: string, metadata?: SessionMetadata
     return `Session became focused: ${sessionId}`;
 }
 
+export function formatAttachmentsQueued(sessionId: string, added: number, total: number): string {
+    const addedLabel = added === 1 ? 'an image' : `${added} images`;
+    return `User attached ${addedLabel} in session: ${sessionId} (${total} now queued). They will be included automatically with the next message sent to that session. Do not mention this unless it is relevant.`;
+}
+
 export function formatReadyEvent(sessionId: string): string {
     return `Claude Code done working in session: ${sessionId}. The previous message(s) are the summary of the work done. Report this to the human immediately.`;
 }

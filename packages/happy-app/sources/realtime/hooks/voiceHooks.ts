@@ -1,5 +1,6 @@
 import { getCurrentRealtimeSessionId, getVoiceSession, isVoiceSessionStarted, setCurrentRealtimeSessionId } from '../RealtimeSession';
 import {
+    formatAttachmentsQueued,
     formatNewMessages,
     formatPermissionRequest,
     formatReadyEvent,
@@ -9,6 +10,7 @@ import {
     formatSessionOnline
 } from './contextFormatters';
 import { storage } from '@/sync/storage';
+import { subscribeQueueChanges } from '@/sync/attachmentQueue';
 import { Message } from '@/sync/typesMessage';
 import { VOICE_CONFIG } from '../voiceConfig';
 
@@ -49,6 +51,21 @@ function ensureModeSubscription() {
                 flushPendingPrompts();
             }
         }
+    });
+}
+
+// Attachment queue → voice. Like the mode subscription above, this is installed once
+// and left in place: sendContext is already the single gate on whether anything
+// reaches a live conversation, so an idle subscription costs nothing and there is no
+// teardown ordering to get wrong.
+let unsubscribeAttachments: (() => void) | null = null;
+
+function ensureAttachmentSubscription() {
+    if (unsubscribeAttachments) return;
+    unsubscribeAttachments = subscribeQueueChanges((additions) => {
+        additions.forEach(({ sessionId, added, total }) => {
+            sendContext(formatAttachmentsQueued(sessionId, added, total));
+        });
     });
 }
 
@@ -193,6 +210,7 @@ export const voiceHooks = {
         shownSessions.clear();
         pendingPrompts = [];
         ensureModeSubscription();
+        ensureAttachmentSubscription();
 
         let prompt = '';
 

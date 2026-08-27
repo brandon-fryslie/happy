@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { sync } from '@/sync/sync';
+import { takeAttachments } from '@/sync/attachmentQueue';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { trackVoicePermissionResponse } from '@/track';
@@ -31,7 +32,13 @@ export const realtimeClientTools = {
 
         const { sessionId, message } = parsed.data;
         console.log('📤 Sending message to session:', sessionId);
-        await sync.sendMessage(sessionId, message, { source: 'voice' });
+        // Images the user queued in the composer ride along with the dictated text.
+        // Taking by sessionId is what keeps them from leaking: voice can address any
+        // session, and only the queue belonging to the addressed one is consumed.
+        await sync.sendMessage(sessionId, message, {
+            source: 'voice',
+            attachments: takeAttachments(sessionId),
+        });
         incrementVoiceMessageCount();
         const voiceMessageCount = getVoiceMessageCount();
         if (isVoiceSessionStarted()) {
