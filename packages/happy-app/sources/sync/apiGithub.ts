@@ -1,4 +1,6 @@
-import { AuthCredentials } from '@/auth/tokenStorage';
+// Type-only: tokenStorage reaches expo-secure-store and react-native at load time, and
+// this module needs none of that — only the shape of the credentials it forwards.
+import type { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
