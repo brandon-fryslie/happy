@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodeBase64, encodeBase64, libsodiumEncryptForPublicKey } from './encryption';
+import { HAPPY_CLIENT_ID } from './config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(__dirname, '..');
@@ -213,7 +214,7 @@ async function approveAgentLogin(
         headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'X-Happy-Client': 'cli-control-plane/0.1.0',
+            'X-Happy-Client': HAPPY_CLIENT_ID,
         },
         body: JSON.stringify({
             publicKey: publicKeyBase64,
