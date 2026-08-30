@@ -38,6 +38,20 @@ describe('voice tool contract', () => {
         });
     });
 
+    // A whitespace-only transcript is not a message. Rejected at the checkpoint rather
+    // than discarded by the send path, which would answer with an outcome the agent has
+    // no guidance for relaying.
+    it('rejects a message with nothing but whitespace in it', () => {
+        expect(VOICE_TOOL_PARAMETERS.sendMessageToSession.safeParse({
+            sessionId: 's', message: '   ',
+        }).success).toBe(false);
+
+        const parsed = VOICE_TOOL_PARAMETERS.sendMessageToSession.safeParse({
+            sessionId: 's', message: '  hello  ',
+        });
+        expect(parsed.success && parsed.data.message).toBe('hello');
+    });
+
     it('rejects a call that omits the session it is meant to address', () => {
         // Not a defaulting-to-focused-session tool: an unaddressed message is an error,
         // never a message delivered somewhere plausible.

@@ -15,7 +15,12 @@ import { z } from 'zod';
 export const VOICE_TOOL_PARAMETERS = {
     sendMessageToSession: z.object({
         sessionId: z.string().min(1),
-        message: z.string().min(1),
+        // Trimmed before the length check: the send path measures text by `trim()`, so a
+        // whitespace-only transcript would otherwise parse, reach the send, and come back
+        // as a nothing-to-send outcome the agent has no guidance for reading aloud.
+        // [LAW:parse-dont-validate] the checkpoint rejects what the inland code would only
+        // have discarded.
+        message: z.string().trim().min(1),
     }),
     processPermissionRequest: z.object({
         requestId: z.string().min(1),
