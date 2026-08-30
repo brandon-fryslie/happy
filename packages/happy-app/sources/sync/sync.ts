@@ -52,6 +52,7 @@ import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
+import { takeAttachments } from './attachmentQueue';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { MINIMUM_CLI_VERSION_FOR_ATTACHMENTS, resolveAttachmentSupport, type BlockedAttachmentSupport } from './attachmentSupport';
 import { encryptBlob } from '@/encryption/blob';
@@ -100,8 +101,6 @@ type OutboxMessage = {
 type SendMessageOptions = {
     displayText?: string;
     source?: MessageSentSource;
-    /** Optional image attachments to send before the text message. */
-    attachments?: AttachmentPreview[];
 };
 
 class Sync {
@@ -553,6 +552,22 @@ class Sync {
         return { uploaded, failed };
     }
 
+    /**
+     * Send a user message to a session, carrying whatever images are staged in that
+     * session's attachment queue.
+     *
+     * [LAW:single-enforcer] This is the one place the queue is consumed. Callers name
+     * the session and hand over the text; they never take the queue themselves. When
+     * both senders (composer and voice tool) each did their own take-then-send, each
+     * separately owned the window between draining the queue and committing the
+     * message — and each dropped the user's images on the floor if the send fell over
+     * in between. One consumer, one window, and the window is closed below.
+     *
+     * Throws when the session cannot be resolved. [LAW:no-silent-failure] The failure
+     * used to be a bare `console.error` and a `return`, which handed the caller the
+     * same `undefined` a successful send returns — so the voice tool reported "sent"
+     * for a message that never left, and counted it.
+     */
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
 
         // Get encryption — may not be ready yet if sessions are still syncing
@@ -562,8 +577,7 @@ class Sync {
             await this.sessionsSync.awaitQueue();
             encryption = this.encryption.getSessionEncryption(sessionId);
             if (!encryption) {
-                console.error(`Session ${sessionId} not found after sync`);
-                return;
+                throw new Error(`Cannot send: session ${sessionId} has no encryption after sync`);
             }
         }
 
@@ -573,13 +587,24 @@ class Sync {
             await this.sessionsSync.awaitQueue();
             session = storage.getState().sessions[sessionId];
             if (!session) {
-                console.error(`Session ${sessionId} not found in storage after sync`);
-                return;
+                throw new Error(`Cannot send: session ${sessionId} not in storage after sync`);
             }
         }
 
+        // The commit point. Everything that could abandon the send has already either
+        // succeeded or thrown, so taking here means the queue is drained exactly when
+        // the message is going out. [LAW:no-ambient-temporal-coupling] there is no
+        // ordering left to get wrong — not a narrowed window, no window.
+        const attachments = takeAttachments(sessionId);
+
+        // Nothing to send. Reachable only when the composer's own gate raced a
+        // concurrent take, and it loses nothing: an empty take had nothing to lose.
+        if (!text.trim() && attachments.length === 0) {
+            return;
+        }
+
         const { permissionMode, model, effort } = resolveMessageModeMeta(session);
-        const { displayText, source = 'chat', attachments } = options ?? {};
+        const { displayText, source = 'chat' } = options ?? {};
 
         // [LAW:single-enforcer] The one place that decides whether attachments
         // may travel. The composer hides the attach button for these sessions,
@@ -589,7 +614,7 @@ class Sync {
         const attachmentSupport = resolveAttachmentSupport(session.metadata);
         const effectiveAttachments = attachmentSupport === 'supported' ? attachments : undefined;
 
-        if (attachments && attachments.length > 0 && attachmentSupport !== 'supported') {
+        if (attachments.length > 0 && attachmentSupport !== 'supported') {
             const { title, message } = BLOCKED_ATTACHMENT_ALERTS[attachmentSupport]();
             Modal.alert(title, message, [{ text: t('common.ok'), style: 'cancel' }]);
         }

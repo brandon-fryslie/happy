@@ -21,7 +21,6 @@ import { TtsControlBar } from '@/components/TtsControlBar';
 import { useTtsPlayer } from '@/hooks/useTtsPlayer';
 import { useDraft } from '@/hooks/useDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
-import { takeAttachments } from '@/sync/attachmentQueue';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -541,18 +540,16 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }}
             blockSend={false}
             onSend={() => {
+                // A UI affordance, not a correctness gate: it keeps an empty composer
+                // from doing work. sendMessage consumes the session's queue itself and
+                // decides from that one read whether a message exists, so a stale
+                // `selectedImages` racing a concurrent take can no longer send an empty
+                // message the way a separate take here could.
                 if (message.trim() || selectedImages.length > 0) {
                     setMessage('');
                     clearDraft();
-                    // [LAW:one-source-of-truth] The queue is consumed and cleared in one
-                    // step, by the same call the voice tool makes. Sending what is
-                    // visible in the strip — rather than a separately flag-filtered copy
-                    // of it — is what keeps the two senders from ever disagreeing about
-                    // which images went out.
-                    sync.sendMessage(sessionId, message, {
-                        source: 'chat',
-                        attachments: takeAttachments(sessionId),
-                    });
+                    sync.sendMessage(sessionId, message, { source: 'chat' })
+                        .catch((err) => console.error('[send] chat message failed:', err));
                 }
             }}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
