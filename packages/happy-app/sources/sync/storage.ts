@@ -32,6 +32,7 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
+import { clearAttachments } from "./attachmentQueue";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1161,7 +1162,15 @@ export const storage = create<StorageState>()((set, get) => {
             const effortLevels = loadSessionEffortLevels();
             delete effortLevels[sessionId];
             saveSessionEffortLevels(effortLevels);
-            
+
+            // Staged images outlive their session otherwise: the queue is a module-level
+            // store keyed by session id, where it used to be composer state that
+            // unmounted with the screen. This list is where the teardown for anything
+            // keyed by session id belongs, so the next per-session store gets torn down
+            // by the person reading it. [LAW:one-source-of-truth]
+            clearAttachments(sessionId);
+
+
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);
             
