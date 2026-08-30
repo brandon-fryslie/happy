@@ -1,5 +1,6 @@
-// Type-only: tokenStorage reaches expo-secure-store and react-native at load time, and
-// this module needs none of that — only the shape of the credentials it forwards.
+// Type-only because only the shape is used. It buys no load-time isolation: the
+// getHappyClientId import below is a value import of apiSocket, which itself pulls in
+// tokenStorage, react-native and expo-constants.
 import type { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';

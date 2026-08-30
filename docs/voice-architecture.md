@@ -21,7 +21,10 @@ types.ts                   Shared type definitions
 
 Tool calls are routed by the agent, not by the app: `sendMessageToSession` takes the target `sessionId` as a parameter, and `processPermissionRequest` finds the owning session by looking up its `requestId` in `storage`. The agent learns both ids from the context Happy injects — see [Voice Agent Tools](#voice-agent-tools).
 
-A single module-level variable `currentSessionId` in `RealtimeSession.ts` tracks which session the user is looking at. Its one consumer is **focus dedup**: `voiceHooks.onSessionFocus()` compares against it to avoid re-injecting context for the already-focused session. When the user navigates to a different session while voice is active, `onSessionFocus` updates it and injects the new session's context, which is how the agent comes to know the newly focused session's id.
+A single module-level variable `currentSessionId` in `RealtimeSession.ts` tracks which session the user is looking at. It has two consumers, and both are about the *focused* session rather than about routing:
+
+1. **Focus dedup** — `voiceHooks.onSessionFocus()` compares against it to avoid re-injecting context for the already-focused session. When the user navigates to a different session while voice is active, `onSessionFocus` updates it and injects the new session's context, which is how the agent comes to know the newly focused session's id.
+2. **Permission-request announcements** — `sync/storage.ts` compares it against the id of a session whose agent state just changed, and speaks a new permission request aloud only for the session the user is currently looking at. Removing `currentSessionId` without replacing this gate would silently stop those announcements; nothing would fail to compile.
 
 ```text
 User taps mic on Session A
