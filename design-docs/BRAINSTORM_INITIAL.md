@@ -8,7 +8,7 @@ The BYO API-key path on `voice-byo-elevenlabs` opens up several adjacent improve
 
 1. **Custom ElevenLabs base URL** — ElevenLabs supports white-label/regional endpoints; let users override the host. Trivial change on top of BYO.
 2. **Drop ElevenLabs entirely as an option** — Pluggable voice backends: OpenAI Realtime, Deepgram Nova-3 + Cartesia, local Whisper + Piper. The current `RealtimeVoiceSession.tsx` interface (`startSession`/`endSession`/`sendTextMessage`/`sendContextualUpdate`) is the right boundary — implement it for one more provider and the architecture answers whether it's reusable.
-3. **Voice → Codex/Gemini parity** — `realtimeClientTools.ts` only exposes `messageClaudeCode` and `processPermissionRequest`. Codex sessions get no voice control. Generalize the tool to `messageActiveSession` and let routing handle provider dispatch.
+3. **Voice → Codex/Gemini parity** — `realtimeClientTools.ts` only exposes `sendMessageToSession` and `processPermissionRequest`. Codex sessions get no voice control. Let routing handle provider dispatch behind the existing tool.
 4. **Local STT/TTS for transcript-only mode** — Many users want voice input → text without realtime turn-taking. Cheaper, no per-minute cost, no third-party data exposure.
 5. **Per-session voice context budget** — `voiceHooks.onSessionFocus()` re-injects context on every focus; for long sessions this hits the agent's context window hard. Cap and summarize.
 
@@ -55,7 +55,7 @@ The fix in `2a899e1b` (orphan claude reaper) suggests this area is fragile. Like
 
 1. **Local-first agent runs** — Today the encrypted blob round-trips through the server even for purely local use. A peer-to-peer mode (LAN-only Bonjour, or libp2p) would let phone↔CLI work without internet for users who care.
 2. **Replay / branch sessions** — The session protocol already preserves enough information to fork a conversation at an arbitrary turn. Surfacing this as a UI affordance ("rewind", "branch from here") would be unique vs. raw `claude` / `codex`.
-3. **Voice-driven multi-agent orchestration** — The `messageClaudeCode` tool currently routes to one session. With BYO agents and routing intelligence in the voice agent's prompt, you could have one voice front-end driving multiple coding-agent backends ("ask claude to do X while codex finishes Y").
+3. **Voice-driven multi-agent orchestration** — The `sendMessageToSession` tool currently addresses one session per call. With BYO agents and routing intelligence in the voice agent's prompt, you could have one voice front-end driving multiple coding-agent backends ("ask claude to do X while codex finishes Y").
 4. **Agent-level analytics** — Time-on-task per session, tool-call mix, permission denial rate. Useful for any user trying to evaluate which agent (claude vs codex) is better for what.
 
 ## How to use this doc

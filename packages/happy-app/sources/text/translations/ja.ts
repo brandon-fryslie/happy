@@ -628,7 +628,7 @@ export const ja: TranslationStructure = {
         },
         // Bring your own agent
         byoTitle: '自分のエージェントを使う',
-        byoDescription: 'Happy のデフォルトの代わりに、独自の ElevenLabs エージェントを使用します。サブスクリプション不要 — 自分の ElevenLabs アカウントで直接接続できます。エージェントには2つのクライアントツールを定義する必要があります: messageClaudeCode（コーディングエージェントにテキストを送信）と processPermissionRequest（ツール使用を許可または拒否）。セッションコンテキストは {{initialConversationContext}} 動的変数を通じて受信されます。',
+        byoDescription: 'Happy のデフォルトの代わりに、独自の ElevenLabs エージェントを使用します。サブスクリプション不要 — 自分の ElevenLabs アカウントで直接接続できます。エージェントには、下の「エージェントプロンプトガイド」に記載されたクライアントツールを定義する必要があります。セッションコンテキストは {{initialConversationContext}} 動的変数を通じて受信されます。',
         customAgentId: 'ElevenLabs Agent ID',
         customAgentIdNotSet: '未設定',
         customAgentIdDescription: 'ElevenLabs Agent ID を入力してください。空のままにすると Happy のデフォルトが使用されます。',
@@ -641,7 +641,7 @@ export const ja: TranslationStructure = {
         bypassToken: '直接接続',
         bypassTokenSubtitle: 'Happy サーバーをスキップし、ElevenLabs に直接接続',
         promptGuideTitle: 'エージェントプロンプトガイド',
-        promptGuideDescription: 'ElevenLabs エージェントには以下が必要です:\n\n• ツール: messageClaudeCode — パラメータ: message (string)。アクティブなコーディングセッションにメッセージを送信します。\n• ツール: processPermissionRequest — パラメータ: decision ("allow" または "deny")。保留中のツール許可を承認または拒否します。\n• 動的変数: {{initialConversationContext}} — 開始時にセッション履歴とコンテキストを受信します。\n\nエージェントはユーザーとコーディングエージェント間の音声ブリッジとして機能します。簡潔に、話しかけられた時のみ応答し、コーディングエージェントが作業を完了したら報告する必要があります。',
+        promptGuideDescription: ({ toolSignatures }: { toolSignatures: string }) => `ElevenLabs エージェントには、以下のクライアントツールをこの名前とパラメータのとおりに定義する必要があります:\n\n${toolSignatures}\n\nさらに動的変数 {{initialConversationContext}} が必要です。起動時にセッション一覧と履歴を受け取ります。\n\nHappy は注入するコンテキストの中で、すべてのセッションと許可リクエストを識別子付きで示します。セッション ID は最初の一覧と、フォーカスや状態の更新のたびに現れ、許可リクエストは <request_id> タグに包まれて届きます。エージェントはその ID をそのまま返してください。決して自分で作ってはいけません。\n\nエージェントはユーザーとコーディングエージェント間の音声ブリッジとして機能します。簡潔に、話しかけられた時のみ応答し、コーディングエージェントが作業を完了したら報告する必要があります。`,
         usageTitle: '使用状況（過去30日間）',
         usageFooter: '過去30日間に使用した音声時間。無料プラン: 20分。サブスクリプション: 5時間。月間最大100会話。',
         usageLabel: '音声時間',

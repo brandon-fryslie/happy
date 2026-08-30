@@ -17,6 +17,7 @@ import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { trackPaywallButtonClicked } from '@/track';
 import { getVoiceExperimentStatus, getVoiceUpsellVariantLabel } from '@/realtime/voiceExperiment';
+import { VOICE_TOOL_SIGNATURES } from '@/realtime/voiceToolContract';
 import { getVoiceLocalCounters, resetVoiceLocalCounters } from '@/sync/persistence';
 
 function formatVoiceTime(totalSeconds: number): string {
@@ -285,7 +286,7 @@ export default React.memo(function VoiceSettingsScreen() {
             {voiceCustomAgentId && (
                 <ItemGroup
                     title={t('settingsVoice.promptGuideTitle')}
-                    footer={t('settingsVoice.promptGuideDescription')}
+                    footer={t('settingsVoice.promptGuideDescription', { toolSignatures: VOICE_TOOL_SIGNATURES })}
                 >
                     <Item
                         title={t('settingsVoice.customAgentId')}
