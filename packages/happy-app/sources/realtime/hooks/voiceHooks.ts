@@ -10,7 +10,7 @@ import {
     formatSessionOnline
 } from './contextFormatters';
 import { storage } from '@/sync/storage';
-import { subscribeQueueChanges } from '@/sync/attachmentQueue';
+import { subscribeQueueChanges, getSessionAttachments } from '@/sync/attachmentQueue';
 import { Message } from '@/sync/typesMessage';
 import { VOICE_CONFIG } from '../voiceConfig';
 
@@ -125,7 +125,11 @@ function injectSessionContext(sessionId: string): string | null {
     const session = storage.getState().sessions[sessionId];
     if (!session) return null;
     const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
-    return formatSessionFull(session, messages);
+    // The subscription below reports queue growth, which images staged before voice
+    // started — or before this session was focused — never produce. Reading the count
+    // here is what stops the agent believing a session has no images and then being
+    // surprised by them in a send.
+    return formatSessionFull(session, messages, getSessionAttachments(sessionId).length);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatSendAnswer, formatAttachmentsQueued } from './contextFormatters';
+import { formatSendAnswer, formatAttachmentsQueued, formatSessionFull } from './contextFormatters';
 
 describe('formatSendAnswer', () => {
     it('keeps the agent terse when everything went out', () => {
@@ -45,6 +45,28 @@ describe('formatSendAnswer', () => {
                 expect(formatSendAnswer({ reason, count })).not.toBe(formatSendAnswer(null));
             });
         });
+    });
+});
+
+describe('formatSessionFull staged images', () => {
+    const session = { id: 'session-a', metadata: { summary: { text: 'work' }, path: '/tmp' } } as never;
+
+    it('says nothing about images when none are staged', () => {
+        expect(formatSessionFull(session, [], 0)).not.toContain('Attached images');
+    });
+
+    // The live subscription only reports growth, so images staged before voice started
+    // produce no announcement at all — this dump is the agent's only chance to learn.
+    it('reports images staged before the agent was listening', () => {
+        const dump = formatSessionFull(session, [], 3);
+
+        expect(dump).toContain('Attached images');
+        expect(dump).toContain('3 images are attached');
+        expect(dump).toContain('included automatically');
+    });
+
+    it('counts a single staged image in the singular', () => {
+        expect(formatSessionFull(session, [], 1)).toContain('image is attached');
     });
 });
 

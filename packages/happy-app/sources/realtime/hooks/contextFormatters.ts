@@ -86,7 +86,30 @@ export function formatHistory(sessionId: string, messages: Message[]): string {
 // Session states
 //
 
-export function formatSessionFull(session: Session, messages: Message[]): string {
+/**
+ * The staged-image line of a session dump, as zero or one line.
+ *
+ * [LAW:dataflow-not-control-flow] Returning a list rather than a nullable line lets the
+ * caller always spread it; an empty queue is the identity case, not a skipped branch.
+ */
+function stagedAttachmentLines(stagedAttachments: number): string[] {
+    if (stagedAttachments === 0) return [];
+
+    const images = stagedAttachments === 1 ? 'image is' : `${stagedAttachments} images are`;
+    return [`## Attached images\n${images} attached and will be included automatically with the next message sent to this session. You cannot see them.`];
+}
+
+/**
+ * `stagedAttachments` is passed in rather than read here: the queue lives in a store
+ * that reaches react-native, and this module is a pure formatter that must stay
+ * loadable without it. [LAW:effects-at-boundaries] the caller does the reading.
+ *
+ * It has to be reported at all because the live subscription only announces queue
+ * *growth*. Images staged before voice started — or before this session was focused —
+ * produce no growth to announce, so without this line the agent believes there are none
+ * and contradicts itself when they turn up in a send.
+ */
+export function formatSessionFull(session: Session, messages: Message[], stagedAttachments: number): string {
     const sessionName = session.metadata?.summary?.text;
     const sessionPath = session.metadata?.path;
     const lines: string[] = [];
@@ -102,6 +125,8 @@ export function formatSessionFull(session: Session, messages: Message[]): string
         lines.push(session.metadata.summary.text);
         lines.push('');
     }
+
+    lines.push(...stagedAttachmentLines(stagedAttachments));
 
     // Add history
     lines.push('## Our interaction history so far');
