@@ -103,6 +103,26 @@ type SendMessageOptions = {
     source?: MessageSentSource;
 };
 
+/**
+ * Which sends carry the images the user staged in that session's composer.
+ *
+ * The composer and dictation into it are the user's own message, and the strip in
+ * front of them is part of it. A canned send is not: tapping a suggested reply while
+ * images sit staged used to sweep them onto that one-word answer and empty the strip,
+ * losing the images the user was still composing around.
+ *
+ * [LAW:types-are-the-program] Exhaustive over `MessageSentSource` on purpose. A list of
+ * the two sources that do carry them would give a sixth source whichever behavior
+ * nobody thought about; this way adding one is a compile error until someone decides.
+ */
+const SOURCE_CARRIES_STAGED_ATTACHMENTS: Record<MessageSentSource, boolean> = {
+    chat: true,
+    voice: true,
+    option: false,
+    question: false,
+    new_session: false,
+};
+
 class Sync {
     private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
     encryption!: Encryption;
@@ -591,11 +611,16 @@ class Sync {
             }
         }
 
-        // The commit point. Everything that could abandon the send has already either
-        // succeeded or thrown, so taking here means the queue is drained exactly when
-        // the message is going out. [LAW:no-ambient-temporal-coupling] there is no
-        // ordering left to get wrong — not a narrowed window, no window.
-        const attachments = takeAttachments(sessionId);
+        const { displayText, source = 'chat' } = options ?? {};
+
+        // The commit point for the sends that carry staged images. Everything that
+        // could abandon the send has already either succeeded or thrown, so taking here
+        // means the queue is drained exactly when the message is going out.
+        // [LAW:no-ambient-temporal-coupling] there is no ordering left to get wrong —
+        // not a narrowed window, no window.
+        const attachments = SOURCE_CARRIES_STAGED_ATTACHMENTS[source]
+            ? takeAttachments(sessionId)
+            : [];
 
         // Nothing to send. Reachable only when the composer's own gate raced a
         // concurrent take, and it loses nothing: an empty take had nothing to lose.
@@ -604,7 +629,6 @@ class Sync {
         }
 
         const { permissionMode, model, effort } = resolveMessageModeMeta(session);
-        const { displayText, source = 'chat' } = options ?? {};
 
         // [LAW:single-enforcer] The one place that decides whether attachments
         // may travel. The composer hides the attach button for these sessions,
