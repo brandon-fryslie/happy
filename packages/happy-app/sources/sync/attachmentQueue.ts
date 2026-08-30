@@ -25,9 +25,10 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import {
     MAX_IMAGES_PER_MESSAGE,
-    MAX_FILE_SIZE,
     MAX_FILE_SIZE_MB,
+    admitAttachments,
     type AttachmentPreview,
+    type AttachmentRefusal,
 } from '@/sync/attachmentTypes';
 
 type AttachmentQueues = Record<string, AttachmentPreview[]>;
@@ -57,12 +58,7 @@ export function getSessionAttachments(sessionId: string): AttachmentPreview[] {
  * like the app losing them.
  */
 export function queueAttachments(sessionId: string, images: AttachmentPreview[]): void {
-    const oversized = images.filter((img) => img.size > MAX_FILE_SIZE);
-    const admissible = images.filter((img) => img.size <= MAX_FILE_SIZE);
-
-    const current = getSessionAttachments(sessionId);
-    const remaining = Math.max(0, MAX_IMAGES_PER_MESSAGE - current.length);
-    const accepted = admissible.slice(0, remaining);
+    const { accepted, refusal } = admitAttachments(getSessionAttachments(sessionId), images);
 
     if (accepted.length > 0) {
         useAttachmentQueueStore.setState((s) => ({
@@ -70,24 +66,32 @@ export function queueAttachments(sessionId: string, images: AttachmentPreview[])
         }));
     }
 
-    // The refusal alerts below stay outside the updater: a state updater must be pure
-    // and may be invoked more than once, which would stutter the modal.
+    // The refusal alert stays outside the updater: a state updater must be pure and may
+    // be invoked more than once, which would stutter the modal.
+    announceRefusal(refusal);
+}
 
-    if (oversized.length > 0) {
-        Modal.alert(
-            t('imageUpload.fileTooLargeTitle'),
-            oversized.length === 1
-                ? t('imageUpload.fileTooLargeMessage', { name: oversized[0].name, maxMb: MAX_FILE_SIZE_MB })
-                : t('imageUpload.filesTooLargeMessage', { count: oversized.length, maxMb: MAX_FILE_SIZE_MB }),
-            [{ text: t('common.ok') }],
-        );
-    } else if (admissible.length > accepted.length) {
-        Modal.alert(
-            t('imageUpload.limitTitle'),
-            t('imageUpload.limitMessage', { max: MAX_IMAGES_PER_MESSAGE }),
-            [{ text: t('common.ok') }],
-        );
-    }
+/**
+ * Render a refusal to the user. [LAW:dataflow-not-control-flow] the precedence between
+ * the two limits was decided upstream in `admitAttachments` and arrives here as a
+ * value; this only picks the wording for the variant it was handed.
+ */
+function announceRefusal(refusal: AttachmentRefusal | null): void {
+    if (refusal === null) return;
+
+    const { title, message } = refusal.kind === 'oversized'
+        ? {
+            title: t('imageUpload.fileTooLargeTitle'),
+            message: refusal.images.length === 1
+                ? t('imageUpload.fileTooLargeMessage', { name: refusal.images[0].name, maxMb: MAX_FILE_SIZE_MB })
+                : t('imageUpload.filesTooLargeMessage', { count: refusal.images.length, maxMb: MAX_FILE_SIZE_MB }),
+        }
+        : {
+            title: t('imageUpload.limitTitle'),
+            message: t('imageUpload.limitMessage', { max: MAX_IMAGES_PER_MESSAGE }),
+        };
+
+    Modal.alert(title, message, [{ text: t('common.ok') }]);
 }
 
 export function removeAttachment(sessionId: string, id: string): void {
