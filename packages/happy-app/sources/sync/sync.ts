@@ -104,18 +104,6 @@ type SendMessageOptions = {
 };
 
 /**
- * Which sends carry the images the user staged in that session's composer.
- *
- * The composer and dictation into it are the user's own message, and the strip in
- * front of them is part of it. A canned send is not: tapping a suggested reply while
- * images sit staged used to sweep them onto that one-word answer and empty the strip,
- * losing the images the user was still composing around.
- *
- * [LAW:types-are-the-program] Exhaustive over `MessageSentSource` on purpose. A list of
- * the two sources that do carry them would give a sixth source whichever behavior
- * nobody thought about; this way adding one is a compile error until someone decides.
- */
-/**
  * What a send actually did.
  *
  * [LAW:parse-dont-validate] A `void` return collapsed "sent everything", "sent the text
@@ -128,6 +116,18 @@ export type SendMessageOutcome =
     | { sent: false; reason: 'nothing-to-send' }
     | { sent: true; dropped: DroppedAttachments | null };
 
+/**
+ * Which sends carry the images the user staged in that session's composer.
+ *
+ * The composer and dictation into it are the user's own message, and the strip in
+ * front of them is part of it. A canned send is not: tapping a suggested reply while
+ * images sit staged used to sweep them onto that one-word answer and empty the strip,
+ * losing the images the user was still composing around.
+ *
+ * [LAW:types-are-the-program] Exhaustive over `MessageSentSource` on purpose. A list of
+ * the two sources that do carry them would give a sixth source whichever behavior
+ * nobody thought about; this way adding one is a compile error until someone decides.
+ */
 const SOURCE_CARRIES_STAGED_ATTACHMENTS: Record<MessageSentSource, boolean> = {
     chat: true,
     voice: true,

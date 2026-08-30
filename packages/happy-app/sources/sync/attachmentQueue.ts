@@ -1,13 +1,18 @@
 /**
  * The pending-attachment queue for every session's composer, keyed by session id.
  *
- * [LAW:no-shared-mutable-globals] This store is the queue's single owner. It used to
- * live as component state inside the composer, which made it invisible to every other
- * sender — a voice-dictated message silently dropped the images sitting in the strip,
- * because the voice tool had no way to reach them. Now the composer, the picker, paste,
- * drop, and the voice tool all go through this one API, and any consumer that takes the
- * queue is reflected back into the strip automatically because the strip reads the same
- * state.
+ * [LAW:no-shared-mutable-globals] This IS shared mutable state, deliberately, and the
+ * law is what it has to satisfy rather than something it escapes: shared state is
+ * allowed exactly when it has a single owner, an explicit API, and written-down
+ * invariants. This module is the owner, the exported functions are the API, and the
+ * invariants are the two paragraphs below. Nothing writes `queues` except through here.
+ *
+ * It used to live as component state inside the composer, which made it invisible to
+ * every other sender — a voice-dictated message silently dropped the images sitting in
+ * the strip, because the voice tool had no way to reach them. Now the composer, the
+ * picker, paste, drop, and the voice tool all go through this one API, and any consumer
+ * that takes the queue is reflected back into the strip automatically because the strip
+ * reads the same state.
  *
  * [LAW:single-enforcer] `queueAttachments` is the one gate every attachment passes
  * through, whatever picked it — library picker, web paste, or drag-and-drop. It applies
