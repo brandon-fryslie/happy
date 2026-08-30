@@ -131,15 +131,25 @@ export class CodexAppServerClient {
     } | null = null;
 
     // Turn completion tracking for the currently active sendTurnAndWait call.
-    // `turnId` is filled in by turn/start's reply or by the turn's start notification;
-    // `started` records that we actually saw this turn begin, which is what lets the
-    // id-less thread-idle signal tell "my turn finished" from "the previous turn's idle
-    // notification just landed". It is set by turn/start's reply as well as by the
-    // turn/started notification, because Codex skips that notification for fast turns.
+    // `turnId` is filled in by turn/start's reply or by the turn's start notification.
+    //
+    // `sawTurnActivity` records that this turn has produced work of its own, which is
+    // what lets the id-less thread-idle signal tell "my turn finished" from "the
+    // previous turn's idle just landed". Measured against a real app-server: idle is a
+    // THREAD-level trailing signal, not a per-turn one — two back-to-back turns each
+    // completed via item/completed:final_answer and produced a single idle 139ms after
+    // the second finished. Anything that marks this turn before it has done work leaves
+    // that trailing idle free to complete the next turn instead, handing the caller an
+    // empty turn carrying the previous turn's events.
+    //
+    // Which is why neither turn/start's reply nor the turn/started notification sets it:
+    // the reply is too early (that is the 139ms window), and the notification is skipped
+    // for every turn after the first. Items are what actually arrive for every turn —
+    // the userMessage item lands about a millisecond after the reply.
     private pendingTurnCompletion: {
         resolve: (aborted: boolean) => void;
         turnId: string | null;
-        started: boolean;
+        sawTurnActivity: boolean;
     } | null = null;
 
     // Tracks in-flight interruptTurn() RPCs so sendTurnAndWait can wait for them
@@ -254,7 +264,7 @@ export class CodexAppServerClient {
             if (turnId) {
                 this._turnId = turnId;
             }
-            this.markPendingTurnStarted(turnId);
+            this.markPendingTurnActive(turnId);
             this.eventHandler?.({
                 type: 'task_started',
                 ...(turnId ? { turn_id: turnId } : {}),
@@ -275,14 +285,20 @@ export class CodexAppServerClient {
         if (method === 'thread/status/changed') {
             const statusType = params?.status?.type;
             // This notification names no turn, so it can only be attributed to the turn
-            // we are currently waiting on — and that attribution is wrong for an idle
-            // that was already in flight when this turn began. The previous turn going
-            // idle would otherwise be stamped with the new turn's id and complete it
-            // within milliseconds, handing the caller an empty turn carrying the old
-            // turn's trailing events. Requiring that we saw this turn start is what
-            // separates the two; turn/completed and item/completed:final_answer both
-            // carry a real turn id and remain unguarded.
-            if (statusType === 'idle' && this.pendingTurnCompletion?.started) {
+            // we are currently waiting on — and that attribution is wrong for a thread
+            // idle that trails the PREVIOUS turn. Measured: a turn completes via
+            // item/completed:final_answer and the thread's idle follows 139ms later, so
+            // any turn started inside that window would otherwise be stamped with the
+            // new turn's id and completed on the spot, handing the caller an empty turn
+            // carrying the old turn's events. Requiring that this turn has done work of
+            // its own separates them: the trailing idle arrives before the new turn's
+            // first item. turn/completed and item/completed:final_answer both carry a
+            // real turn id and remain unguarded.
+            //
+            // This narrows the misattribution window to the gap between a turn's reply
+            // and its first item (~1ms measured) rather than closing it outright, which
+            // the protocol does not permit — the notification carries no turn id at all.
+            if (statusType === 'idle' && this.pendingTurnCompletion?.sawTurnActivity) {
                 this.emitRawTurnCompletion(this._turnId, 'completed', null, method);
             }
             return true;
@@ -303,6 +319,13 @@ export class CodexAppServerClient {
         if (!item || typeof item !== 'object') {
             return method.startsWith('item/');
         }
+
+        // Any item is this turn doing work, whatever the item turns out to be — so the
+        // marking happens here, once, ahead of the per-type dispatch below rather than
+        // in each branch of it. Codex emits the userMessage item about a millisecond
+        // after turn/start's reply, for every turn, which is what makes this the signal
+        // the skipped turn/started notification could not be.
+        this.markPendingTurnActive(this.extractTurnId(params));
 
         if (method === 'item/started' && item.type === 'commandExecution') {
             const callId = typeof item.id === 'string' ? item.id : '';
@@ -709,12 +732,23 @@ export class CodexAppServerClient {
         pending.resolve(aborted);
     }
 
-    private markPendingTurnStarted(turnId?: string | null): void {
+    /**
+     * Record that the pending turn has produced work of its own — a start
+     * notification, or any item. Only after this may an id-less idle be read as this
+     * turn's completion.
+     */
+    private markPendingTurnActive(turnId?: string | null): void {
         if (!this.pendingTurnCompletion) return;
-        this.pendingTurnCompletion.started = true;
+        this.pendingTurnCompletion.sawTurnActivity = true;
         if (turnId) {
             this.pendingTurnCompletion.turnId = turnId;
         }
+    }
+
+    /** Record the turn id a reply or notification carried, without implying activity. */
+    private recordPendingTurnId(turnId: string | null): void {
+        if (!this.pendingTurnCompletion || !turnId) return;
+        this.pendingTurnCompletion.turnId = turnId;
     }
 
     /**
@@ -915,7 +949,7 @@ export class CodexAppServerClient {
             this.pendingTurnCompletion = {
                 resolve,
                 turnId: null,
-                started: false,
+                sawTurnActivity: false,
             };
 
             timer = setTimeout(() => {
@@ -1021,11 +1055,11 @@ export class CodexAppServerClient {
         if (turnId) {
             this._turnId = turnId;
         }
-        // The reply is proof this turn began, and unlike the turn/started notification
-        // Codex cannot skip it for a fast turn. An idle the server emitted for the
-        // previous turn is still ordered ahead of this line, so the completion guard
-        // goes on rejecting those.
-        this.markPendingTurnStarted(turnId);
+        // The id only. The reply proves the server accepted the turn, not that the turn
+        // has done anything — and the measured 139ms between a turn's real completion
+        // and the thread's trailing idle is exactly the window in which treating the
+        // reply as activity would let that idle complete this turn instead.
+        this.recordPendingTurnId(turnId);
     }
 
     private notify(method: string, params?: unknown): void {
@@ -1242,7 +1276,7 @@ export class CodexAppServerClient {
                     this._turnId = msg.turn_id;
                 }
                 if (msg.type === 'task_started') {
-                    this.markPendingTurnStarted(msg.turn_id ?? msg.turnId ?? null);
+                    this.markPendingTurnActive(msg.turn_id ?? msg.turnId ?? null);
                 }
                 // Fire event handler first (so consumer processes the event)
                 this.eventHandler?.(msg);
@@ -1277,7 +1311,7 @@ export class CodexAppServerClient {
                 if (turnId) {
                     this._turnId = turnId;
                 }
-                this.markPendingTurnStarted(turnId);
+                this.markPendingTurnActive(turnId);
             }
             // turn/completed is a fallback signal — for mid-inference interrupts,
             // Codex may only signal completion here (not via codex/event turn_aborted).
