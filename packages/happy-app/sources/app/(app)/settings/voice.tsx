@@ -282,19 +282,19 @@ export default React.memo(function VoiceSettingsScreen() {
                 />
             </ItemGroup>
 
-            {/* Prompt Guide — shown when custom agent is configured */}
-            {voiceCustomAgentId && (
-                <ItemGroup
-                    title={t('settingsVoice.promptGuideTitle')}
-                    footer={t('settingsVoice.promptGuideDescription', { toolSignatures: VOICE_TOOL_SIGNATURES })}
-                >
-                    <Item
-                        title={t('settingsVoice.customAgentId')}
-                        subtitle={voiceCustomAgentId}
-                        copy={voiceCustomAgentId}
-                    />
-                </ItemGroup>
-            )}
+            {/* Prompt Guide — always shown: the BYO footer above points "below" for the
+                tool list, and the tools are what you need *before* you have an agent to
+                put an id in. Gating this on having one had the dependency backwards. */}
+            <ItemGroup
+                title={t('settingsVoice.promptGuideTitle')}
+                footer={t('settingsVoice.promptGuideDescription', { toolSignatures: VOICE_TOOL_SIGNATURES })}
+            >
+                <Item
+                    title={t('settingsVoice.customAgentId')}
+                    subtitle={voiceCustomAgentId ?? t('settingsVoice.customAgentIdNotSet')}
+                    copy={voiceCustomAgentId ?? undefined}
+                />
+            </ItemGroup>
         </ItemList>
     );
 });
