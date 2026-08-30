@@ -51,10 +51,22 @@ function renderSignature(name: string, parameters: z.ZodObject<z.ZodRawShape>): 
 }
 
 /**
+ * Each tool's signature on its own, for prose that names one tool at a time — the
+ * system prompt describes what each does in a sentence, and hand-writing the signature
+ * there is how the agent every non-BYO user talks to would end up told the old one.
+ */
+export const VOICE_TOOL_SIGNATURE: Record<VoiceToolName, string> = Object.fromEntries(
+    Object.entries(VOICE_TOOL_PARAMETERS).map(([name, parameters]) => [
+        name,
+        renderSignature(name, parameters),
+    ]),
+) as Record<VoiceToolName, string>;
+
+/**
  * The tool signatures exactly as a BYO agent must declare them, one bullet per line,
  * ready to interpolate into the translated setup guide. Identifiers only — there is
  * nothing here for a translator to touch.
  */
-export const VOICE_TOOL_SIGNATURES: string = Object.entries(VOICE_TOOL_PARAMETERS)
-    .map(([name, parameters]) => `• ${renderSignature(name, parameters)}`)
+export const VOICE_TOOL_SIGNATURES: string = Object.values(VOICE_TOOL_SIGNATURE)
+    .map((signature) => `• ${signature}`)
     .join('\n');
