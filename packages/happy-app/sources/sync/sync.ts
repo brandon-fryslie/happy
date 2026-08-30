@@ -51,7 +51,7 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
-import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
+import type { AttachmentPreview, DroppedAttachments, UploadedAttachment } from './attachmentTypes';
 import { takeAttachments } from './attachmentQueue';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { MINIMUM_CLI_VERSION_FOR_ATTACHMENTS, resolveAttachmentSupport, type BlockedAttachmentSupport } from './attachmentSupport';
@@ -115,6 +115,19 @@ type SendMessageOptions = {
  * the two sources that do carry them would give a sixth source whichever behavior
  * nobody thought about; this way adding one is a compile error until someone decides.
  */
+/**
+ * What a send actually did.
+ *
+ * [LAW:parse-dont-validate] A `void` return collapsed "sent everything", "sent the text
+ * and threw the images away" and "sent nothing" into one value, so the only report of a
+ * partial send was a modal — invisible to a caller, and invisible to a user driving
+ * hands-free through voice while the agent answered "sent". The outcome is the answer;
+ * callers that render it to a human render this, not a guess.
+ */
+export type SendMessageOutcome =
+    | { sent: false; reason: 'nothing-to-send' }
+    | { sent: true; dropped: DroppedAttachments | null };
+
 const SOURCE_CARRIES_STAGED_ATTACHMENTS: Record<MessageSentSource, boolean> = {
     chat: true,
     voice: true,
@@ -588,7 +601,7 @@ class Sync {
      * same `undefined` a successful send returns — so the voice tool reported "sent"
      * for a message that never left, and counted it.
      */
-    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
+    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions): Promise<SendMessageOutcome> {
 
         // Get encryption — may not be ready yet if sessions are still syncing
         let encryption = this.encryption.getSessionEncryption(sessionId);
@@ -625,7 +638,7 @@ class Sync {
         // Nothing to send. Reachable only when the composer's own gate raced a
         // concurrent take, and it loses nothing: an empty take had nothing to lose.
         if (!text.trim() && attachments.length === 0) {
-            return;
+            return { sent: false, reason: 'nothing-to-send' };
         }
 
         const { permissionMode, model, effort } = resolveMessageModeMeta(session);
@@ -638,7 +651,13 @@ class Sync {
         const attachmentSupport = resolveAttachmentSupport(session.metadata);
         const effectiveAttachments = attachmentSupport === 'supported' ? attachments : undefined;
 
+        // Every path that discards an image records it here, so the outcome this
+        // function returns is the whole story. A modal is not: it reaches a user who is
+        // looking at the screen, which is exactly not the voice user.
+        let dropped: DroppedAttachments | null = null;
+
         if (attachments.length > 0 && attachmentSupport !== 'supported') {
+            dropped = { reason: 'unsupported-host', count: attachments.length };
             const { title, message } = BLOCKED_ATTACHMENT_ALERTS[attachmentSupport]();
             Modal.alert(title, message, [{ text: t('common.ok'), style: 'cancel' }]);
         }
@@ -648,6 +667,7 @@ class Sync {
             const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
 
             if (failed > 0) {
+                dropped = { reason: 'upload-failed', count: failed };
                 Modal.alert(
                     t('imageUpload.uploadFailedTitle'),
                     t('imageUpload.uploadFailedMessage', { count: failed }),
@@ -769,6 +789,8 @@ class Sync {
 
         this.getSendSync(sessionId).invalidate();
         this.maybeStartBackgroundSendWatchdog();
+
+        return { sent: true, dropped };
     }
 
     /** Server sent us settings — merge any pending local changes on top, then apply as one update. */

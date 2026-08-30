@@ -84,6 +84,18 @@ export function admitAttachments(
     };
 }
 
+/**
+ * Images that were staged for a send but did not go with it, and why.
+ *
+ * Lives here with the rest of the attachment vocabulary rather than beside the send
+ * that produces it, so the voice layer can name a drop without reaching through `sync`
+ * — and therefore without dragging react-native into a pure string formatter.
+ */
+export type DroppedAttachments = {
+    reason: 'unsupported-host' | 'upload-failed';
+    count: number;
+};
+
 /** Result of a successful attachment upload — ready to build a file event. */
 export type UploadedAttachment = {
     ref: string;

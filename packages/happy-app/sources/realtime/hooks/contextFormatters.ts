@@ -1,6 +1,7 @@
 import { Session } from "@/sync/storageTypes";
 import { Message } from "@/sync/typesMessage";
 import { trimIdent } from "@/utils/trimIdent";
+import type { DroppedAttachments } from "@/sync/attachmentTypes";
 import { VOICE_CONFIG } from "../voiceConfig";
 
 interface SessionMetadata {
@@ -125,6 +126,28 @@ export function formatSessionFocus(sessionId: string, metadata?: SessionMetadata
 export function formatAttachmentsQueued(sessionId: string, added: number, total: number): string {
     const addedLabel = added === 1 ? 'an image' : `${added} images`;
     return `User attached ${addedLabel} in session: ${sessionId} (${total} now queued). They will be included automatically with the next message sent to that session. Do not mention this unless it is relevant.`;
+}
+
+/**
+ * What the agent says back after a send, given what became of the staged images.
+ *
+ * The counterpart to `formatAttachmentsQueued` above: that one promises the images will
+ * ride along, and this one is the only place that promise can be walked back. A drop is
+ * otherwise announced by a modal, which reaches a user looking at the screen — the one
+ * user voice exists for is not. Terse stays the default; a drop is the exception that
+ * has to be spoken.
+ */
+export function formatSendAnswer(dropped: DroppedAttachments | null): string {
+    if (dropped === null) {
+        return "sent [DO NOT say anything else, simply say 'sent']";
+    }
+
+    const images = dropped.count === 1 ? 'image' : 'images';
+    const why = dropped.reason === 'unsupported-host'
+        ? 'this session cannot receive images'
+        : 'the upload failed';
+    return `sent, but ${dropped.count} attached ${images} did not go with it because ${why}`
+        + ` [tell the user their ${images} could not be sent]`;
 }
 
 export function formatReadyEvent(sessionId: string): string {

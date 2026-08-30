@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { sync } from '@/sync/sync';
+import { formatSendAnswer } from './hooks/contextFormatters';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { trackVoicePermissionResponse } from '@/track';
@@ -34,7 +35,10 @@ const handlers: VoiceToolHandlers = {
         // the count below and the "sent" answer from covering for a message that never
         // left — dispatch turns that throw into the error string the agent hears.
         // [LAW:no-silent-failure]
-        await sync.sendMessage(sessionId, message, { source: 'voice' });
+        const outcome = await sync.sendMessage(sessionId, message, { source: 'voice' });
+        if (!outcome.sent) {
+            return `error (${outcome.reason})`;
+        }
         incrementVoiceMessageCount();
         const voiceMessageCount = getVoiceMessageCount();
         if (isVoiceSessionStarted()) {
@@ -43,7 +47,7 @@ const handlers: VoiceToolHandlers = {
                 `- voice_message_count: ${voiceMessageCount}`,
             ].join('\n'));
         }
-        return "sent [DO NOT say anything else, simply say 'sent']";
+        return formatSendAnswer(outcome.dropped);
     },
 
     /**
