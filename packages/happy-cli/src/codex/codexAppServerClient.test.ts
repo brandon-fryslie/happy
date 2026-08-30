@@ -500,6 +500,71 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    // Codex skips turn/started for fast turns. When such a turn's only completion
+    // signal is the id-less idle status change, the completion guard has to open on
+    // turn/start's reply instead — otherwise the turn hangs until TURN_TIMEOUT_MS.
+    // The short timeout here is what turns that regression into a failure rather than
+    // a ten-minute stall.
+    it('completes a turn signalled only by a bare idle, with no turn/started', async () => {
+        const proc = createMockProcess({
+            pid: 3002,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-fast-1', path: '/tmp/thread-fast-1' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-fast-1', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        // No turn/started, no turn/completed, no final_answer item —
+                        // the bare idle is the entire completion signal.
+                        pushJsonLine(stdout, {
+                            method: 'thread/status/changed',
+                            params: { threadId: 'thread-fast-1', status: { type: 'idle' } },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(
+            client.sendTurnAndWait('fast turn', { turnTimeoutMs: 2000 }),
+        ).resolves.toEqual({ aborted: false });
+
+        await client.disconnect();
+    });
+
     it('maps raw file change items into legacy patch events', async () => {
         const proc = createMockProcess({
             pid: 3003,

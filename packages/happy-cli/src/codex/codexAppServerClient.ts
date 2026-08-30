@@ -134,7 +134,8 @@ export class CodexAppServerClient {
     // `turnId` is filled in by turn/start's reply or by the turn's start notification;
     // `started` records that we actually saw this turn begin, which is what lets the
     // id-less thread-idle signal tell "my turn finished" from "the previous turn's idle
-    // notification just landed".
+    // notification just landed". It is set by turn/start's reply as well as by the
+    // turn/started notification, because Codex skips that notification for fast turns.
     private pendingTurnCompletion: {
         resolve: (aborted: boolean) => void;
         turnId: string | null;
@@ -872,14 +873,12 @@ export class CodexAppServerClient {
         // turn/start returns immediately; turn completes via events.
         // We don't await completion here — the caller's event handler
         // tracks task_complete / turn_aborted.
-        const result = await this.request('turn/start', params) as { turn?: { id?: string | null } };
-        const turnId = result?.turn?.id;
-        if (typeof turnId === 'string' && turnId.length > 0) {
-            this._turnId = turnId;
-            if (this.pendingTurnCompletion) {
-                this.pendingTurnCompletion.turnId = turnId;
-            }
-        }
+        // [LAW:one-source-of-truth] The reply's turn id and the "this turn began" flag
+        // are both recorded by observeResponse, which runs in wire order. Recording
+        // them here instead would place them a microtask late — after any completion
+        // that arrived in the same chunk had already been judged against a turn that
+        // did not yet look started.
+        await this.request('turn/start', params);
     }
 
     /** Default timeout for waiting on turn completion (ms). 10 minutes. */
@@ -1003,6 +1002,32 @@ export class CodexAppServerClient {
         });
     }
 
+    /**
+     * Record the facts a response carries, in wire order.
+     *
+     * [LAW:no-ambient-temporal-coupling] Responses and notifications arrive on one
+     * ordered stream, but only notifications are handled in that order: resolving a
+     * request's promise hands control to the awaiting caller a microtask later, after
+     * the whole current batch of lines has been processed. Anything a later line
+     * depends on therefore has to be recorded here, beside `handleNotification`, and
+     * not in the `await` continuation — where a turn/start reply and the turn's own
+     * completion arriving in the same chunk would be seen in the wrong order.
+     */
+    private observeResponse(method: string, result: unknown): void {
+        if (method !== 'turn/start') return;
+
+        const turn = (result as { turn?: { id?: string | null } } | null)?.turn;
+        const turnId = typeof turn?.id === 'string' && turn.id.length > 0 ? turn.id : null;
+        if (turnId) {
+            this._turnId = turnId;
+        }
+        // The reply is proof this turn began, and unlike the turn/started notification
+        // Codex cannot skip it for a fast turn. An idle the server emitted for the
+        // previous turn is still ordered ahead of this line, so the completion guard
+        // goes on rejecting those.
+        this.markPendingTurnStarted(turnId);
+    }
+
     private notify(method: string, params?: unknown): void {
         if (!this.process?.stdin?.writable) return;
         const msg: JsonRpcRequest = { jsonrpc: '2.0', method, params };
@@ -1043,6 +1068,7 @@ export class CodexAppServerClient {
                 if (msg.error) {
                     pending.reject(new Error(`${pending.method}: ${msg.error.message} (code=${msg.error.code})`));
                 } else {
+                    this.observeResponse(pending.method, msg.result);
                     pending.resolve(msg.result);
                 }
             }
