@@ -44,6 +44,11 @@ describe('blob encryption', () => {
         expect(new Uint8Array(decrypted!)).toEqual(data);
     });
 
+    // Genuinely slow work — a megabyte round-tripped, then compared byte by byte. It
+    // runs in ~2s alone and had been passing the 5s default by a margin that shrank
+    // with every test file added alongside it, which is a timeout measuring machine
+    // load rather than the code under test. Timed explicitly so a failure here means
+    // blob encryption got slow, not that the suite got wider.
     it('should encrypt and decrypt a large blob (1MB)', () => {
         const data = new Uint8Array(1024 * 1024);
         for (let i = 0; i < data.length; i++) data[i] = i % 256;
@@ -53,7 +58,7 @@ describe('blob encryption', () => {
 
         expect(decrypted).not.toBeNull();
         expect(new Uint8Array(decrypted!)).toEqual(data);
-    });
+    }, 30_000);
 
     it('should handle binary data with null bytes', () => {
         const data = new Uint8Array([0, 0, 0, 255, 0, 128, 0]);
