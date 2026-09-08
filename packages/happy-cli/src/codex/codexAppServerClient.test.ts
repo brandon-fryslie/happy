@@ -500,6 +500,196 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    // Codex skips turn/started for fast turns. When such a turn's only completion
+    // signal is the id-less idle status change, the completion guard has to open on
+    // turn/start's reply instead — otherwise the turn hangs until TURN_TIMEOUT_MS.
+    // The short timeout here is what turns that regression into a failure rather than
+    // a ten-minute stall.
+    it('completes a turn signalled only by a bare idle, with no turn/started', async () => {
+        const proc = createMockProcess({
+            pid: 3002,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-fast-1', path: '/tmp/thread-fast-1' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-fast-1', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        // No turn/started, no turn/completed, no final_answer item —
+                        // the bare idle is the entire completion signal. The userMessage
+                        // item is what a real app-server emits for every turn about a
+                        // millisecond after the reply, and it is what tells this idle
+                        // apart from one trailing the previous turn.
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-fast-1',
+                                turnId: 'turn-fast-1',
+                                item: { type: 'userMessage', id: 'user-fast-1', content: [] },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'thread/status/changed',
+                            params: { threadId: 'thread-fast-1', status: { type: 'idle' } },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(
+            client.sendTurnAndWait('fast turn', { turnTimeoutMs: 2000 }),
+        ).resolves.toEqual({ aborted: false });
+
+        await client.disconnect();
+    });
+
+    // The trailing-idle race, in the window this client can actually close. Measured
+    // against a real app-server: the thread's idle is a THREAD-level signal that trails
+    // the last turn's completion by ~139ms, so a turn started inside that window can
+    // receive it. It names no turn at all, so the only thing separating "turn two
+    // finished" from "turn one's idle finally arrived" is whether turn two has done any
+    // work of its own yet. Turn two here must outlive an idle landing between its reply
+    // and its first item, and end on its own final_answer.
+    it('does not let a previous turn\'s trailing idle complete a turn that has not begun working', async () => {
+        let turnStarts = 0;
+        const proc = createMockProcess({
+            pid: 3004,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-trail-1', path: '/tmp/thread-trail-1' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    turnStarts += 1;
+                    const turnId = `turn-trail-${turnStarts}`;
+                    const emitWork = () => {
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-trail-1',
+                                turnId,
+                                item: { type: 'userMessage', id: `user-${turnStarts}`, content: [] },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-trail-1',
+                                turnId,
+                                item: {
+                                    type: 'agentMessage',
+                                    id: `msg-${turnStarts}`,
+                                    text: `answer ${turnStarts}`,
+                                    phase: 'final_answer',
+                                },
+                            },
+                        });
+                    };
+
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: { turn: { id: turnId, items: [], status: 'inProgress', error: null } },
+                        });
+
+                        if (turnStarts === 1) {
+                            emitWork();
+                            return;
+                        }
+
+                        // Turn two's reply has landed but it has not begun working yet.
+                        // Turn one's thread-level idle arrives in that gap — carrying no
+                        // turn id, so only "turn two has done nothing yet" tells it from
+                        // turn two finishing.
+                        setTimeout(() => {
+                            pushJsonLine(stdout, {
+                                method: 'thread/status/changed',
+                                params: { threadId: 'thread-trail-1', status: { type: 'idle' } },
+                            });
+                            setTimeout(emitWork, 20);
+                        }, 10);
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => { events.push(msg as Record<string, unknown>); });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(client.sendTurnAndWait('first')).resolves.toEqual({ aborted: false });
+
+        events.length = 0;
+        await expect(
+            client.sendTurnAndWait('second', { turnTimeoutMs: 5000 }),
+        ).resolves.toEqual({ aborted: false });
+
+        // Turn two carried its own answer rather than being cut short by turn one's
+        // idle before it had produced anything.
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'agent_message', message: 'answer 2' }),
+        ]));
+
+        await client.disconnect();
+    });
+
     it('maps raw file change items into legacy patch events', async () => {
         const proc = createMockProcess({
             pid: 3003,

@@ -1,6 +1,7 @@
 import { Session } from "@/sync/storageTypes";
 import { Message } from "@/sync/typesMessage";
 import { trimIdent } from "@/utils/trimIdent";
+import type { DroppedAttachments } from "@/sync/attachmentTypes";
 import { VOICE_CONFIG } from "../voiceConfig";
 
 interface SessionMetadata {
@@ -85,7 +86,30 @@ export function formatHistory(sessionId: string, messages: Message[]): string {
 // Session states
 //
 
-export function formatSessionFull(session: Session, messages: Message[]): string {
+/**
+ * The staged-image line of a session dump, as zero or one line.
+ *
+ * [LAW:dataflow-not-control-flow] Returning a list rather than a nullable line lets the
+ * caller always spread it; an empty queue is the identity case, not a skipped branch.
+ */
+function stagedAttachmentLines(stagedAttachments: number): string[] {
+    if (stagedAttachments === 0) return [];
+
+    const images = stagedAttachments === 1 ? 'image is' : `${stagedAttachments} images are`;
+    return [`## Attached images\n${images} attached and will be included automatically with the next message sent to this session. You cannot see them.`];
+}
+
+/**
+ * `stagedAttachments` is passed in rather than read here: the queue lives in a store
+ * that reaches react-native, and this module is a pure formatter that must stay
+ * loadable without it. [LAW:effects-at-boundaries] the caller does the reading.
+ *
+ * It has to be reported at all because the live subscription only announces queue
+ * *growth*. Images staged before voice started — or before this session was focused —
+ * produce no growth to announce, so without this line the agent believes there are none
+ * and contradicts itself when they turn up in a send.
+ */
+export function formatSessionFull(session: Session, messages: Message[], stagedAttachments: number): string {
     const sessionName = session.metadata?.summary?.text;
     const sessionPath = session.metadata?.path;
     const lines: string[] = [];
@@ -101,6 +125,8 @@ export function formatSessionFull(session: Session, messages: Message[]): string
         lines.push(session.metadata.summary.text);
         lines.push('');
     }
+
+    lines.push(...stagedAttachmentLines(stagedAttachments));
 
     // Add history
     lines.push('## Our interaction history so far');
@@ -120,6 +146,33 @@ export function formatSessionOnline(sessionId: string, metadata?: SessionMetadat
 
 export function formatSessionFocus(sessionId: string, metadata?: SessionMetadata): string {
     return `Session became focused: ${sessionId}`;
+}
+
+export function formatAttachmentsQueued(sessionId: string, added: number, total: number): string {
+    const addedLabel = added === 1 ? 'an image' : `${added} images`;
+    return `User attached ${addedLabel} in session: ${sessionId} (${total} now queued). They will be included automatically with the next message sent to that session. Do not mention this unless it is relevant.`;
+}
+
+/**
+ * What the agent says back after a send, given what became of the staged images.
+ *
+ * The counterpart to `formatAttachmentsQueued` above: that one promises the images will
+ * ride along, and this one is the only place that promise can be walked back. A drop is
+ * otherwise announced by a modal, which reaches a user looking at the screen — the one
+ * user voice exists for is not. Terse stays the default; a drop is the exception that
+ * has to be spoken.
+ */
+export function formatSendAnswer(dropped: DroppedAttachments | null): string {
+    if (dropped === null) {
+        return "sent [DO NOT say anything else, simply say 'sent']";
+    }
+
+    const images = dropped.count === 1 ? 'image' : 'images';
+    const why = dropped.reason === 'unsupported-host'
+        ? 'this session cannot receive images'
+        : 'the upload failed';
+    return `sent, but ${dropped.count} attached ${images} did not go with it because ${why}`
+        + ` [tell the user their ${images} could not be sent]`;
 }
 
 export function formatReadyEvent(sessionId: string): string {

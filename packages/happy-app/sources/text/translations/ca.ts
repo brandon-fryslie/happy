@@ -627,7 +627,7 @@ export const ca: TranslationStructure = {
         },
         // Bring your own agent
         byoTitle: 'Porta el teu propi agent',
-        byoDescription: 'Utilitza el teu propi agent d\'ElevenLabs en lloc del predeterminat de Happy. No cal subscripció — connecta directament amb el teu propi compte d\'ElevenLabs. El teu agent ha de definir dues eines de client: messageClaudeCode (envia text a l\'agent de codi) i processPermissionRequest (permet o denega l\'ús d\'eines). Rep el context de la sessió a través de la variable dinàmica {{initialConversationContext}}.',
+        byoDescription: 'Utilitza el teu propi agent d\'ElevenLabs en lloc del predeterminat de Happy. No cal subscripció — connecta directament amb el teu propi compte d\'ElevenLabs. El teu agent ha de definir les eines de client indicades a la Guia de Prompt de l\'Agent de més avall, i rep el context de la sessió a través de la variable dinàmica {{initialConversationContext}}.',
         customAgentId: 'ElevenLabs Agent ID',
         customAgentIdNotSet: 'No configurat',
         customAgentIdDescription: 'Introdueix el teu ElevenLabs Agent ID. Deixa-ho buit per utilitzar el predeterminat de Happy.',
@@ -640,7 +640,7 @@ export const ca: TranslationStructure = {
         bypassToken: 'Connexió directa',
         bypassTokenSubtitle: 'Omet el servidor de Happy, connecta directament a ElevenLabs',
         promptGuideTitle: 'Guia de prompt de l\'agent',
-        promptGuideDescription: 'El teu agent d\'ElevenLabs necessita:\n\n• Eina: messageClaudeCode — paràmetre: message (string). Envia un missatge a la sessió de codi activa.\n• Eina: processPermissionRequest — paràmetre: decision ("allow" o "deny"). Aprova o denega un permís d\'eina pendent.\n• Variable dinàmica: {{initialConversationContext}} — rep l\'historial i el context de la sessió en iniciar.\n\nL\'agent actua com a pont de veu entre l\'usuari i els agents de codi. Ha de ser concís, respondre només quan se li parla i informar quan un agent de codi acaba la feina.',
+        promptGuideDescription: ({ toolSignatures }: { toolSignatures: string }) => `El teu agent d'ElevenLabs necessita aquestes eines de client, amb exactament aquests noms i paràmetres:\n\n${toolSignatures}\n\nTambé necessita la variable dinàmica {{initialConversationContext}}, que rep el directori de sessions i l'historial en iniciar.\n\nHappy identifica cada sessió i cada sol·licitud de permís al context que injecta: els ids de sessió apareixen al directori inicial i a cada actualització de focus o d'estat, i una sol·licitud de permís arriba envoltada d'etiquetes <request_id>. El teu agent retorna aquests ids tal com són — mai no se n'ha d'inventar cap.\n\nL'agent actua com a pont de veu entre l'usuari i els agents de codi. Ha de ser concís, respondre només quan se li parla i informar quan un agent de codi acaba la feina.`,
         usageTitle: 'Ús (últims 30 dies)',
         usageFooter: 'Temps de veu utilitzat en els últims 30 dies. Nivell gratuït: 20 min. Subscrit: 5 hores. Màx. 100 converses al mes.',
         usageLabel: 'Temps de veu',

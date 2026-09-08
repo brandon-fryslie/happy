@@ -1,4 +1,7 @@
-import { AuthCredentials } from '@/auth/tokenStorage';
+// Type-only because only the shape is used. It buys no load-time isolation: the
+// getHappyClientId import below is a value import of apiSocket, which itself pulls in
+// tokenStorage, react-native and expo-constants.
+import type { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';

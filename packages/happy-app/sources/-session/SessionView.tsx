@@ -376,7 +376,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Image attachment state (expImageUpload feature flag)
     const expImageUpload = useSetting('expImageUpload');
-    const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
+    const { selectedImages, pickImages, removeImage, addImages } = useImagePicker(sessionId);
 
     // Sessions whose host can't take images keep the strip (so anything already
     // queued stays visible and removable) but lose the ways to add more. The
@@ -540,12 +540,16 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }}
             blockSend={false}
             onSend={() => {
-                if (message.trim() || (expImageUpload && selectedImages.length > 0)) {
-                    const attachments = expImageUpload ? selectedImages : undefined;
+                // A UI affordance, not a correctness gate: it keeps an empty composer
+                // from doing work. sendMessage consumes the session's queue itself and
+                // decides from that one read whether a message exists, so a stale
+                // `selectedImages` racing a concurrent take can no longer send an empty
+                // message the way a separate take here could.
+                if (message.trim() || selectedImages.length > 0) {
                     setMessage('');
                     clearDraft();
-                    if (expImageUpload) clearImages();
-                    sync.sendMessage(sessionId, message, { source: 'chat', attachments });
+                    sync.sendMessage(sessionId, message, { source: 'chat' })
+                        .catch((err) => console.error('[send] chat message failed:', err));
                 }
             }}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
@@ -553,9 +557,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onAbort={isDisconnected ? undefined : () => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments && !isTablet ? () => router.push(`/session/${sessionId}/files`) : undefined}
-            selectedImages={expImageUpload ? selectedImages : undefined}
+            // The strip and its remove button are never flag-gated: they show whatever
+            // is queued, and an empty queue renders nothing. Hiding a non-empty queue
+            // behind a flag would send images the user could no longer see or remove.
+            selectedImages={selectedImages}
             onPickImages={canAddImages ? pickImages : undefined}
-            onRemoveImage={expImageUpload ? removeImage : undefined}
+            onRemoveImage={removeImage}
             onAddImages={onAddImages}
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}

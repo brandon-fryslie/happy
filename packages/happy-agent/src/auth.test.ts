@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import tweetnacl from 'tweetnacl';
 import { encodeBase64, getRandomBytes, libsodiumEncryptForPublicKey } from './encryption';
 import { readCredentials, writeCredentials } from './credentials';
+import { HAPPY_CLIENT_ID } from './config';
 import type { Config } from './config';
 
 // Mock axios
@@ -113,7 +114,8 @@ describe('auth', () => {
             // Verify axios was called with correct URL
             expect(mockedAxiosPost).toHaveBeenCalledWith(
                 'https://test-server.example.com/v1/auth/account/request',
-                expect.objectContaining({ publicKey: expect.any(String) })
+                expect.objectContaining({ publicKey: expect.any(String) }),
+                { headers: { 'X-Happy-Client': HAPPY_CLIENT_ID } }
             );
         });
 

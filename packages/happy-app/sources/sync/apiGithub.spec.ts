@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { disconnectGitHub } from './apiGithub';
-import { AuthCredentials } from '@/auth/tokenStorage';
+import type { AuthCredentials } from '@/auth/tokenStorage';
 
 // Mock the serverConfig
 vi.mock('./serverConfig', () => ({
@@ -10,6 +10,14 @@ vi.mock('./serverConfig', () => ({
 // Mock backoff utility
 vi.mock('@/utils/time', () => ({
     backoff: vi.fn((fn) => fn())
+}));
+
+// getHappyClientId reads the running platform and the bundled app version — ambient
+// state this module has no business owning, so it is stubbed at the boundary alongside
+// the other two environment-coupled dependencies above. Pinning it also lets the header
+// assertion below be exact instead of matching whatever platform ran the suite.
+vi.mock('./apiSocket', () => ({
+    getHappyClientId: () => 'test-client/1.0.0'
 }));
 
 describe('apiGithub', () => {
@@ -45,7 +53,8 @@ describe('apiGithub', () => {
                 {
                     method: 'DELETE',
                     headers: {
-                        'Authorization': 'Bearer test-token'
+                        'Authorization': 'Bearer test-token',
+                        'X-Happy-Client': 'test-client/1.0.0'
                     }
                 }
             );

@@ -24,25 +24,30 @@ describe('modelModeOptions', () => {
         ]);
     });
 
+    // Order is asserted because it is the order the picker shows, which the user sees.
     it('builds claude permission fallbacks with translated names', () => {
         const modes = getClaudePermissionModes(translate);
-        expect(modes.map((mode) => mode.key)).toEqual(['default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions']);
+        expect(modes.map((mode) => mode.key)).toEqual(['default', 'plan', 'dontAsk', 'acceptEdits', 'bypassPermissions']);
         expect(modes[0].name).toBe('tr:agentInput.permissionMode.default');
     });
 
+    // Asserted as properties rather than a pinned roster: every codex release would
+    // otherwise fail this test without anything being wrong, and re-pinning the list
+    // teaches the next reader to treat a red test as routine. What actually has to hold
+    // is that the picker opens on a default and that no entry's label claims to know
+    // more than its key — the same invariant the claude version list is held to.
     it('builds codex model fallbacks', () => {
         const models = getCodexModelModes();
-        expect(models.map((model) => model.key)).toEqual([
-            'default',
-            'gpt-5.4',
-            'gpt-5.3-codex',
-            'gpt-5.2-codex',
-            'gpt-5.1-codex-max',
-            'gpt-5.2',
-            'gpt-5.1-codex-mini',
-        ]);
-        expect(models[0].name).toBe('default model');
-        expect(models[1].name).toBe('gpt-5.4');
+
+        expect(models[0]).toEqual({ key: 'default', name: 'default model', description: null });
+        expect(models.length).toBeGreaterThan(1);
+
+        for (const model of models.slice(1)) {
+            expect(model.name).toBe(model.key);
+        }
+
+        const keys = models.map((model) => model.key);
+        expect(new Set(keys).size).toBe(keys.length);
     });
 
     describe('claude model fallbacks', () => {

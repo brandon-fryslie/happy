@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { SessionMessage as WireSessionMessage } from '@slopus/happy-wire';
+import { HAPPY_CLIENT_ID } from './config';
 import type { Config } from './config';
 import type { Credentials } from './credentials';
 import {
@@ -203,7 +204,7 @@ function handleApiError(err: unknown, context: string): never {
 function authHeaders(creds: Credentials): Record<string, string> {
     return {
         Authorization: `Bearer ${creds.token}`,
-        'X-Happy-Client': 'cli-control-plane/0.1.0',
+        'X-Happy-Client': HAPPY_CLIENT_ID,
     };
 }
 

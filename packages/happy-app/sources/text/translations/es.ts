@@ -627,7 +627,7 @@ export const es: TranslationStructure = {
         },
         // Bring your own agent
         byoTitle: 'Trae tu propio agente',
-        byoDescription: 'Usa tu propio agente de ElevenLabs en lugar del predeterminado de Happy. No se requiere suscripción — conéctate directamente con tu propia cuenta de ElevenLabs. Tu agente debe definir dos herramientas de cliente: messageClaudeCode (envía texto al agente de código) y processPermissionRequest (permite o deniega el uso de herramientas). Recibe el contexto de la sesión a través de la variable dinámica {{initialConversationContext}}.',
+        byoDescription: 'Usa tu propio agente de ElevenLabs en lugar del predeterminado de Happy. No se requiere suscripción — conéctate directamente con tu propia cuenta de ElevenLabs. Tu agente debe definir las herramientas de cliente indicadas en la Guía de Prompt del Agente que aparece abajo, y recibe el contexto de la sesión a través de la variable dinámica {{initialConversationContext}}.',
         customAgentId: 'ElevenLabs Agent ID',
         customAgentIdNotSet: 'No configurado',
         customAgentIdDescription: 'Ingresa tu ElevenLabs Agent ID. Déjalo vacío para usar el predeterminado de Happy.',
@@ -640,7 +640,7 @@ export const es: TranslationStructure = {
         bypassToken: 'Conexión directa',
         bypassTokenSubtitle: 'Omite el servidor de Happy, conéctate directamente a ElevenLabs',
         promptGuideTitle: 'Guía de prompt del agente',
-        promptGuideDescription: 'Tu agente de ElevenLabs necesita:\n\n• Herramienta: messageClaudeCode — parámetro: message (string). Envía un mensaje a la sesión de código activa.\n• Herramienta: processPermissionRequest — parámetro: decision ("allow" o "deny"). Aprueba o deniega un permiso de herramienta pendiente.\n• Variable dinámica: {{initialConversationContext}} — recibe el historial y contexto de la sesión al iniciar.\n\nEl agente actúa como puente de voz entre el usuario y los agentes de código. Debe ser conciso, responder solo cuando se le habla e informar cuando un agente de código termina su trabajo.',
+        promptGuideDescription: ({ toolSignatures }: { toolSignatures: string }) => `Tu agente de ElevenLabs necesita estas herramientas de cliente, con exactamente estos nombres y parámetros:\n\n${toolSignatures}\n\nTambién necesita la variable dinámica {{initialConversationContext}}, que recibe el directorio de sesiones y el historial al iniciar.\n\nHappy identifica cada sesión y cada solicitud de permiso en el contexto que inyecta: los ids de sesión aparecen en el directorio inicial y en cada actualización de foco o estado, y una solicitud de permiso llega envuelta en etiquetas <request_id>. Tu agente devuelve esos ids tal cual — nunca debe inventarse uno.\n\nEl agente actúa como puente de voz entre el usuario y los agentes de código. Debe ser conciso, responder solo cuando se le habla e informar cuando un agente de código termina su trabajo.`,
         usageTitle: 'Uso (últimos 30 días)',
         usageFooter: 'Tiempo de voz utilizado en los últimos 30 días. Plan gratuito: 20 min. Suscrito: 5 horas. Máx. 100 conversaciones al mes.',
         usageLabel: 'Tiempo de voz',

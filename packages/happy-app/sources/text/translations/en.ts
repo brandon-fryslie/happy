@@ -641,7 +641,7 @@ export const en: TranslationStructure = {
         },
         // Bring your own agent
         byoTitle: 'Bring Your Own Agent',
-        byoDescription: 'Use your own ElevenLabs agent instead of the Happy default. No subscription required — connect directly with your own ElevenLabs account. Your agent must define two client tools: messageClaudeCode (sends text to the coding agent) and processPermissionRequest (allows or denies tool use). It receives session context via the {{initialConversationContext}} dynamic variable.',
+        byoDescription: 'Use your own ElevenLabs agent instead of the Happy default. No subscription required — connect directly with your own ElevenLabs account. Your agent must define the client tools listed in the Agent Prompt Guide below, and receives session context via the {{initialConversationContext}} dynamic variable.',
         customAgentId: 'ElevenLabs Agent ID',
         customAgentIdNotSet: 'Not configured',
         customAgentIdDescription: 'Enter your ElevenLabs agent ID. Leave empty to use the Happy default.',
@@ -654,7 +654,7 @@ export const en: TranslationStructure = {
         bypassToken: 'Direct Connection',
         bypassTokenSubtitle: 'Use your own ElevenLabs agent + API key (skips Happy usage gating)',
         promptGuideTitle: 'Agent Prompt Guide',
-        promptGuideDescription: 'Your ElevenLabs agent needs:\n\n• Tool: messageClaudeCode — parameter: message (string). Sends a message to the active coding session.\n• Tool: processPermissionRequest — parameter: decision ("allow" or "deny"). Approves or denies a pending tool permission.\n• Dynamic variable: {{initialConversationContext}} — receives session history and context on start.\n\nThe agent acts as a voice bridge between the user and coding agents. It should be concise, only respond when addressed, and report when a coding agent finishes work.',
+        promptGuideDescription: ({ toolSignatures }: { toolSignatures: string }) => `Your ElevenLabs agent needs these client tools, with exactly these names and parameters:\n\n${toolSignatures}\n\nIt also needs the dynamic variable {{initialConversationContext}}, which receives the session directory and history on start.\n\nHappy names every session and permission request in the context it injects: session ids appear in the opening directory and in every focus or status update, and a permission request arrives wrapped in <request_id> tags. Your agent passes those ids straight back — it must never invent one.\n\nThe agent acts as a voice bridge between the user and coding agents. It should be concise, only respond when addressed, and report when a coding agent finishes work.`,
         usageTitle: 'Usage (Last 30 Days)',
         usageFooter: 'Voice time used in the last 30 days. Free tier: 20 min. Subscribed: 5 hours. Max 100 conversations per month.',
         usageLabel: 'Voice Time',

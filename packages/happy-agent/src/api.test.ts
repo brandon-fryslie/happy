@@ -8,6 +8,7 @@ import {
     libsodiumEncryptForPublicKey,
     deriveContentKeyPair,
 } from './encryption';
+import { HAPPY_CLIENT_ID } from './config';
 import type { Config } from './config';
 import type { Credentials } from './credentials';
 import type { RawSession, RawMessage } from './api';
@@ -261,7 +262,7 @@ describe('api', () => {
 
             expect(mockedAxios.get).toHaveBeenCalledWith(
                 'https://test-server.example.com/v1/sessions',
-                { headers: { Authorization: 'Bearer test-jwt-token' } },
+                { headers: { Authorization: 'Bearer test-jwt-token', 'X-Happy-Client': HAPPY_CLIENT_ID } },
             );
         });
 
@@ -307,7 +308,7 @@ describe('api', () => {
 
             expect(mockedAxios.get).toHaveBeenCalledWith(
                 'https://test-server.example.com/v2/sessions/active',
-                { headers: { Authorization: 'Bearer test-jwt-token' } },
+                { headers: { Authorization: 'Bearer test-jwt-token', 'X-Happy-Client': HAPPY_CLIENT_ID } },
             );
         });
 
@@ -382,7 +383,7 @@ describe('api', () => {
                     metadata: expect.any(String),
                     dataEncryptionKey: expect.any(String),
                 }),
-                { headers: { Authorization: 'Bearer test-jwt-token' } },
+                { headers: { Authorization: 'Bearer test-jwt-token', 'X-Happy-Client': HAPPY_CLIENT_ID } },
             );
         });
 
@@ -521,7 +522,7 @@ describe('api', () => {
 
             expect(mockedAxios.delete).toHaveBeenCalledWith(
                 'https://test-server.example.com/v1/sessions/session-to-delete',
-                { headers: { Authorization: 'Bearer test-jwt-token' } },
+                { headers: { Authorization: 'Bearer test-jwt-token', 'X-Happy-Client': HAPPY_CLIENT_ID } },
             );
         });
 

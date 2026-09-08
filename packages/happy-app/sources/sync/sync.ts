@@ -51,7 +51,8 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
-import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
+import type { AttachmentPreview, DroppedAttachments, UploadedAttachment } from './attachmentTypes';
+import { takeAttachments } from './attachmentQueue';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { MINIMUM_CLI_VERSION_FOR_ATTACHMENTS, resolveAttachmentSupport, type BlockedAttachmentSupport } from './attachmentSupport';
 import { encryptBlob } from '@/encryption/blob';
@@ -100,8 +101,39 @@ type OutboxMessage = {
 type SendMessageOptions = {
     displayText?: string;
     source?: MessageSentSource;
-    /** Optional image attachments to send before the text message. */
-    attachments?: AttachmentPreview[];
+};
+
+/**
+ * What a send actually did.
+ *
+ * [LAW:parse-dont-validate] A `void` return collapsed "sent everything", "sent the text
+ * and threw the images away" and "sent nothing" into one value, so the only report of a
+ * partial send was a modal — invisible to a caller, and invisible to a user driving
+ * hands-free through voice while the agent answered "sent". The outcome is the answer;
+ * callers that render it to a human render this, not a guess.
+ */
+export type SendMessageOutcome =
+    | { sent: false; reason: 'nothing-to-send' }
+    | { sent: true; dropped: DroppedAttachments | null };
+
+/**
+ * Which sends carry the images the user staged in that session's composer.
+ *
+ * The composer and dictation into it are the user's own message, and the strip in
+ * front of them is part of it. A canned send is not: tapping a suggested reply while
+ * images sit staged used to sweep them onto that one-word answer and empty the strip,
+ * losing the images the user was still composing around.
+ *
+ * [LAW:types-are-the-program] Exhaustive over `MessageSentSource` on purpose. A list of
+ * the two sources that do carry them would give a sixth source whichever behavior
+ * nobody thought about; this way adding one is a compile error until someone decides.
+ */
+const SOURCE_CARRIES_STAGED_ATTACHMENTS: Record<MessageSentSource, boolean> = {
+    chat: true,
+    voice: true,
+    option: false,
+    question: false,
+    new_session: false,
 };
 
 class Sync {
@@ -553,7 +585,23 @@ class Sync {
         return { uploaded, failed };
     }
 
-    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
+    /**
+     * Send a user message to a session, carrying whatever images are staged in that
+     * session's attachment queue.
+     *
+     * [LAW:single-enforcer] This is the one place the queue is consumed. Callers name
+     * the session and hand over the text; they never take the queue themselves. When
+     * both senders (composer and voice tool) each did their own take-then-send, each
+     * separately owned the window between draining the queue and committing the
+     * message — and each dropped the user's images on the floor if the send fell over
+     * in between. One consumer, one window, and the window is closed below.
+     *
+     * Throws when the session cannot be resolved. [LAW:no-silent-failure] The failure
+     * used to be a bare `console.error` and a `return`, which handed the caller the
+     * same `undefined` a successful send returns — so the voice tool reported "sent"
+     * for a message that never left, and counted it.
+     */
+    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions): Promise<SendMessageOutcome> {
 
         // Get encryption — may not be ready yet if sessions are still syncing
         let encryption = this.encryption.getSessionEncryption(sessionId);
@@ -562,8 +610,7 @@ class Sync {
             await this.sessionsSync.awaitQueue();
             encryption = this.encryption.getSessionEncryption(sessionId);
             if (!encryption) {
-                console.error(`Session ${sessionId} not found after sync`);
-                return;
+                throw new Error(`Cannot send: session ${sessionId} has no encryption after sync`);
             }
         }
 
@@ -573,13 +620,28 @@ class Sync {
             await this.sessionsSync.awaitQueue();
             session = storage.getState().sessions[sessionId];
             if (!session) {
-                console.error(`Session ${sessionId} not found in storage after sync`);
-                return;
+                throw new Error(`Cannot send: session ${sessionId} not in storage after sync`);
             }
         }
 
+        const { displayText, source = 'chat' } = options ?? {};
+
+        // The commit point for the sends that carry staged images. Everything that
+        // could abandon the send has already either succeeded or thrown, so taking here
+        // means the queue is drained exactly when the message is going out.
+        // [LAW:no-ambient-temporal-coupling] there is no ordering left to get wrong —
+        // not a narrowed window, no window.
+        const attachments = SOURCE_CARRIES_STAGED_ATTACHMENTS[source]
+            ? takeAttachments(sessionId)
+            : [];
+
+        // Nothing to send. Reachable only when the composer's own gate raced a
+        // concurrent take, and it loses nothing: an empty take had nothing to lose.
+        if (!text.trim() && attachments.length === 0) {
+            return { sent: false, reason: 'nothing-to-send' };
+        }
+
         const { permissionMode, model, effort } = resolveMessageModeMeta(session);
-        const { displayText, source = 'chat', attachments } = options ?? {};
 
         // [LAW:single-enforcer] The one place that decides whether attachments
         // may travel. The composer hides the attach button for these sessions,
@@ -589,7 +651,13 @@ class Sync {
         const attachmentSupport = resolveAttachmentSupport(session.metadata);
         const effectiveAttachments = attachmentSupport === 'supported' ? attachments : undefined;
 
-        if (attachments && attachments.length > 0 && attachmentSupport !== 'supported') {
+        // Every path that discards an image records it here, so the outcome this
+        // function returns is the whole story. A modal is not: it reaches a user who is
+        // looking at the screen, which is exactly not the voice user.
+        let dropped: DroppedAttachments | null = null;
+
+        if (attachments.length > 0 && attachmentSupport !== 'supported') {
+            dropped = { reason: 'unsupported-host', count: attachments.length };
             const { title, message } = BLOCKED_ATTACHMENT_ALERTS[attachmentSupport]();
             Modal.alert(title, message, [{ text: t('common.ok'), style: 'cancel' }]);
         }
@@ -599,6 +667,7 @@ class Sync {
             const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
 
             if (failed > 0) {
+                dropped = { reason: 'upload-failed', count: failed };
                 Modal.alert(
                     t('imageUpload.uploadFailedTitle'),
                     t('imageUpload.uploadFailedMessage', { count: failed }),
@@ -720,6 +789,8 @@ class Sync {
 
         this.getSendSync(sessionId).invalidate();
         this.maybeStartBackgroundSendWatchdog();
+
+        return { sent: true, dropped };
     }
 
     /** Server sent us settings — merge any pending local changes on top, then apply as one update. */

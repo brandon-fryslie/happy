@@ -19,12 +19,12 @@ types.ts                   Shared type definitions
 
 ## Session Routing
 
-A single module-level variable `currentSessionId` in `RealtimeSession.ts` controls which session the voice agent's tool calls route to. It is the single source of truth for both:
+Tool calls are routed by the agent, not by the app: `sendMessageToSession` takes the target `sessionId` as a parameter, and `processPermissionRequest` finds the owning session by looking up its `requestId` in `storage`. The agent learns both ids from the context Happy injects — see [Voice Agent Tools](#voice-agent-tools).
 
-- **Routing**: `messageClaudeCode` and `processPermissionRequest` in `realtimeClientTools.ts` read it via `getCurrentRealtimeSessionId()`.
-- **Focus dedup**: `voiceHooks.onSessionFocus()` compares against it to avoid re-injecting context for the already-focused session.
+A single module-level variable `currentSessionId` in `RealtimeSession.ts` tracks which session the user is looking at. It has two consumers, and both are about the *focused* session rather than about routing:
 
-When the user navigates to a different session while voice is active, `onSessionFocus` updates `currentSessionId` so subsequent voice commands route to the newly viewed session.
+1. **Focus dedup** — `voiceHooks.onSessionFocus()` compares against it to avoid re-injecting context for the already-focused session. When the user navigates to a different session while voice is active, `onSessionFocus` updates it and injects the new session's context, which is how the agent comes to know the newly focused session's id.
+2. **Permission-request announcements** — `sync/storage.ts` compares it against the id of a session whose agent state just changed, and speaks a new permission request aloud only for the session the user is currently looking at. Removing `currentSessionId` without replacing this gate would silently stop those announcements; nothing would fail to compile.
 
 ```text
 User taps mic on Session A
@@ -38,10 +38,10 @@ User navigates to Session B
   v
 sync.onSessionVisible("B")
   └──> voiceHooks.onSessionFocus("B")
-         └──> setCurrentRealtimeSessionId("B")
+         ├──> setCurrentRealtimeSessionId("B")
+         └──> injects "Session became focused: B"
 
-Voice agent calls messageClaudeCode
-  └──> getCurrentRealtimeSessionId() → "B"
+Voice agent calls sendMessageToSession({ sessionId: "B", message: ... })
 ```
 
 ## Voice Start
@@ -138,12 +138,12 @@ ElevenLabs SDK
 
 ## Voice Agent Tools
 
-The voice agent can invoke these client tools (defined in `realtimeClientTools.ts`):
+The tool names and their parameter schemas are declared once, in `voiceToolContract.ts`. `realtimeClientTools.ts` registers handlers against that declaration, and the BYO agent setup guide in Settings renders its published signatures from it, so the two cannot drift into describing different tools.
 
-- **messageClaudeCode** — sends a text message to the currently focused session via `sync.sendMessage(sessionId, message)`.
-- **processPermissionRequest** — allows or denies a pending permission request on the current session.
+- **`sendMessageToSession(sessionId: string, message: string)`** — sends a text message to the named session via `sync.sendMessage(sessionId, message)`, along with any images queued in that session's composer.
+- **`processPermissionRequest(requestId: string, decision: "allow" | "deny")`** — allows or denies a pending permission request. The owning session is found by scanning `storage` for the request, so the agent does not supply it.
 
-Both read the target session from `getCurrentRealtimeSessionId()`.
+Both ids are things the agent reads back out of the injected context rather than facts it holds: `contextFormatters.ts` puts session ids in the opening session directory (`- <id>: "<summary>"`), in `# Session ID:` headers, and in every focus/online/offline line, and wraps each permission request's id in `<request_id>` tags. A call that omits its id is rejected by the contract's schema rather than defaulted to the focused session — a message delivered to a plausible-but-wrong session is indistinguishable from success.
 
 ## Lifecycle
 

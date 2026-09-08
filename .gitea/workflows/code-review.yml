@@ -1,5 +1,18 @@
 name: AI Code Review
 
+# [LAW:one-source-of-truth] CANONICAL SOURCE: brandon-fryslie/homelab-infra at
+# .gitea/workflows/code-review.yml. Every onboarded repo runs a byte-identical copy of
+# this file, derived from that one by scripts/copirate-workflow-sync.py — so edit it
+# THERE and re-run the sync, never here in a copy. Nothing per-repo may be written into
+# this text: the ledger issue differs per repo and arrives as vars.LEDGER_ISSUE, and
+# every credential arrives as a secret, both projected by terraform/gitea. A repo whose
+# copy stops matching is reported by that script's `check` mode as `drifted`.
+#
+# This convergence exists because the halves used to move at different speeds: secrets
+# reached all 10 repos in one terraform apply while workflow edits needed 8 hand pushes,
+# and reviews fleet-wide sat dead for 13 days when a credential landed and its input line
+# did not (home-copirate-review-itv, then again with the dismiss job in itv.4.1/itv.6).
+#
 # First live proof of copirate-code-review-agent on Gitea (home-copirate-review-9uj.7),
 # replacing pr-agent as the reviewer for this repo. The action's gitea transport is
 # capability-detected in src/transport.js — no action code changes needed here, only
@@ -8,7 +21,7 @@ name: AI Code Review
 # of which 'auto' may resolve to — plus COPIRATE_REVIEW_TOKEN for the bot identity)
 # and the LEDGER_ISSUE variable, a checkout so the engine can explore the tree, and a
 # per-PR concurrency group so a rapid push loop doesn't pay for reviews of commits
-# that are already replaced.
+# that are already replaced. A second job, dismiss, runs after it — see its own comment.
 
 on:
   pull_request:
@@ -19,13 +32,12 @@ permissions:
   pull-requests: write
   issues: write   # the cost ledger is a repo issue the action reads and appends to (9uj.8)
 
-concurrency:
-  group: ai-code-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   review:
     runs-on: ubuntu-latest
+    concurrency:
+      group: ai-code-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     steps:
       # Full URL: bare `uses:` names resolve against the instance default actions
       # host, not this instance's own mirror (home-ci-workflows 2g4.5).
@@ -53,9 +65,54 @@ jobs:
           # in home-copirate-review-9uj.4 (PR #127).
           GITHUB_REVIEW_TOKEN: ${{ secrets.COPIRATE_REVIEW_TOKEN }}
           # Cost controls at dozens of reviews/day (home-copirate-review-9uj.8): difficulty
-          # right-sizes effort per diff; the budget gradient rations spend against the ledger
-          # issue (terraform/gitea's LEDGER_ISSUE variable → issue #135). $10/day is an opening
-          # ceiling — retune once a week of ledger data shows actual spend.
+          # right-sizes effort per diff; the budget gradient rations spend against THIS repo's
+          # own cost-ledger issue, injected per-repo as vars.LEDGER_ISSUE from
+          # terraform/gitea's copirate_ledger_issues map. No issue number appears here on
+          # purpose: this file is copied verbatim to every onboarded repo, and each repo's
+          # ledger is a different issue, so a literal number would be a comment that is true
+          # in one repo and false in the other nine (home-copirate-review-itv.6).
+          # $10/day is an opening ceiling — retune once a week of ledger data shows spend.
           DIFFICULTY_SCALING: "true"
           DAILY_BUDGET_USD: "10"
           LEDGER_ISSUE: ${{ vars.LEDGER_ISSUE }}
+
+  # home-copirate-review-itv.4.1: dismisses a round-cap-blocked review the job above left
+  # outstanding, using copirate-dismisser's Admin-level token — Gitea 403s a dismiss-review
+  # call at COPIRATE_REVIEW_TOKEN's "write" access (only repo-Admin can dismiss), so this
+  # runs as a SEPARATE action with a separate identity rather than a wider grant on
+  # copirate-bot itself (copirate-code-review-agent PR #124: a Gitea-only credential
+  # shouldn't grow the input surface of the review action every GitHub repo `uses:`).
+  # Unused on GitHub — this job only ever runs here.
+  #
+  # A SEPARATE job, not a second step in `review` — MEASURED LIVE against act_runner
+  # (2026-08-25, this PR: two rapid pushes, the first run's steps inspected via the Actions
+  # API afterward) that cancel-in-progress hard-kills every step of a job the instant it's
+  # superseded, `if: always()` included — a same-job Dismiss Block step concluded
+  # "cancelled" in the same instant as the review step it followed, never running its
+  # logic. `review`'s concurrency group still needs cancel-in-progress (a rapid push loop
+  # shouldn't pay for stale reviews), so the fix is giving dismiss a DIFFERENT group: it is
+  # then never a target of `review`'s cancellation, and `needs: review` + `if: always()` is
+  # the ordinary "run even if the needed job failed or was cancelled" job-scheduling
+  # semantic — decided before this job starts, not by killing it mid-run — so it is not
+  # exposed to the same failure mode the step-level version was.
+  # cancel-in-progress here is safe despite superseding an in-flight dismissal: dismiss-block's
+  # release sweeps EVERY currently-outstanding block from this action's own reviews on the PR
+  # (transport.js's releaseUnrevisitableBlocks, "every outstanding block is attempted before
+  # anything is reported" — not scoped to whichever push originally triggered a given job) and
+  # is idempotent (a released review no longer satisfies isOutstandingBlock, so a later run
+  # reads it as already clear and does nothing). A killed dismiss job therefore loses no work a
+  # later one won't redo from a fresh read of live PR state — there is nothing "this push's
+  # dismissal" that only the cancelled run knew how to finish.
+  dismiss:
+    needs: review
+    if: always()
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ai-code-review-dismiss-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: CoPirate Dismiss Block
+        uses: https://gitea.sanctuary.gdn/brandon-fryslie/copirate-code-review-agent/dismiss-block@v1
+        with:
+          GITHUB_REVIEW_TOKEN: ${{ secrets.COPIRATE_REVIEW_TOKEN }}
+          DISMISS_TOKEN: ${{ secrets.COPIRATE_DISMISS_TOKEN }}

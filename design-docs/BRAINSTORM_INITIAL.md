@@ -8,7 +8,7 @@ The BYO API-key path on `voice-byo-elevenlabs` opens up several adjacent improve
 
 1. **Custom ElevenLabs base URL** — ElevenLabs supports white-label/regional endpoints; let users override the host. Trivial change on top of BYO.
 2. **Drop ElevenLabs entirely as an option** — Pluggable voice backends: OpenAI Realtime, Deepgram Nova-3 + Cartesia, local Whisper + Piper. The current `RealtimeVoiceSession.tsx` interface (`startSession`/`endSession`/`sendTextMessage`/`sendContextualUpdate`) is the right boundary — implement it for one more provider and the architecture answers whether it's reusable.
-3. **Voice → Codex/Gemini parity** — `realtimeClientTools.ts` only exposes `messageClaudeCode` and `processPermissionRequest`. Codex sessions get no voice control. Generalize the tool to `messageActiveSession` and let routing handle provider dispatch.
+3. **Voice → Codex/Gemini parity** — `realtimeClientTools.ts` only exposes `sendMessageToSession` and `processPermissionRequest`. Codex sessions get no voice control. Let routing handle provider dispatch behind the existing tool.
 4. **Local STT/TTS for transcript-only mode** — Many users want voice input → text without realtime turn-taking. Cheaper, no per-minute cost, no third-party data exposure.
 5. **Per-session voice context budget** — `voiceHooks.onSessionFocus()` re-injects context on every focus; for long sessions this hits the agent's context window hard. Cap and summarize.
 
@@ -42,7 +42,7 @@ The fix in `2a899e1b` (orphan claude reaper) suggests this area is fragile. Like
 1. **Replace the dual envelope (legacy + session-protocol) with one** — `legacyProtocol.ts` and `sessionProtocol.ts` coexist in `happy-wire`. Every new feature has to think about both. There's a `provider-envelope-redesign` plan in `docs/plans/`; following through would reduce ongoing cost.
 2. **Clean up the "encrypted settings JSON" pattern** — `Account.settings` is a single encrypted blob that the app parses with partial-Zod-merge for forward/back compat. As that grows, granular settings sync would be cheaper than re-shipping the whole blob on every change. Possibly a CRDT or a per-key versioned field.
 3. **Make the variability in launchers data-driven** — Many `if launcher === 'claude'` branches scattered around. A `Launcher` capability table (supports streaming? supports MCP? JSONL path? signal handling?) would absorb these into one place.
-4. **Replace `module-level let currentSessionId` in voice routing** — Single source of truth, but mutable global. A scoped voice-session object owned by the React tree would survive hot-reload and hold up better when we eventually want concurrent voice sessions across tabs / windows.
+4. **Replace `module-level let currentSessionId` in `RealtimeSession.ts`** — No longer used for routing (tool calls now carry `sessionId` / `requestId` explicitly), so it is down to tracking which session the user is *looking at*, for two consumers: focus dedup in `voiceHooks.ts` and the spoken permission-request gate in `sync/storage.ts`. Still a mutable global. A scoped voice-session object owned by the React tree would survive hot-reload and hold up better when we eventually want concurrent voice sessions across tabs / windows.
 5. **Test infrastructure for the CLI's encryption** — `encryption.ts` is critical, has no mocks, but tests are scattered. A dedicated round-trip test suite (encrypt → wire → decrypt for each variant in `docs/encryption.md`) would catch protocol drift before users do.
 
 ## F. Fork-specific QoL
@@ -55,7 +55,7 @@ The fix in `2a899e1b` (orphan claude reaper) suggests this area is fragile. Like
 
 1. **Local-first agent runs** — Today the encrypted blob round-trips through the server even for purely local use. A peer-to-peer mode (LAN-only Bonjour, or libp2p) would let phone↔CLI work without internet for users who care.
 2. **Replay / branch sessions** — The session protocol already preserves enough information to fork a conversation at an arbitrary turn. Surfacing this as a UI affordance ("rewind", "branch from here") would be unique vs. raw `claude` / `codex`.
-3. **Voice-driven multi-agent orchestration** — The `messageClaudeCode` tool currently routes to one session. With BYO agents and routing intelligence in the voice agent's prompt, you could have one voice front-end driving multiple coding-agent backends ("ask claude to do X while codex finishes Y").
+3. **Voice-driven multi-agent orchestration** — The `sendMessageToSession` tool currently addresses one session per call. With BYO agents and routing intelligence in the voice agent's prompt, you could have one voice front-end driving multiple coding-agent backends ("ask claude to do X while codex finishes Y").
 4. **Agent-level analytics** — Time-on-task per session, tool-call mix, permission denial rate. Useful for any user trying to evaluate which agent (claude vs codex) is better for what.
 
 ## How to use this doc

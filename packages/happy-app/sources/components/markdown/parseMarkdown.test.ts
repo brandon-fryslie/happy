@@ -17,14 +17,42 @@ describe('parseMarkdown', () => {
         }
 
         expect(blocks[0].items).toHaveLength(3);
-        expect(blocks[0].items[1]).toEqual([
-            { styles: [], text: 'second item with ', url: null },
-            { styles: [], text: 'docs', url: 'https://example.com/docs' },
-        ]);
-        expect(blocks[0].items[2]).toEqual([
-            { styles: [], text: 'third item with ', url: null },
-            { styles: [], text: 'https://example.com/raw', url: 'https://example.com/raw' },
-            { styles: [], text: '.', url: null },
+        expect(blocks[0].items[1]).toEqual({
+            depth: 0,
+            spans: [
+                { styles: [], text: 'second item with ', url: null },
+                { styles: [], text: 'docs', url: 'https://example.com/docs' },
+            ],
+        });
+        expect(blocks[0].items[2]).toEqual({
+            depth: 0,
+            spans: [
+                { styles: [], text: 'third item with ', url: null },
+                { styles: [], text: 'https://example.com/raw', url: 'https://example.com/raw' },
+                { styles: [], text: '.', url: null },
+            ],
+        });
+    });
+
+    // depth is what the renderer indents by, and it is derived from leading spaces
+    // relative to the first item — so a list that starts already-indented still counts
+    // its own first level as zero.
+    it('records list nesting depth from relative indentation', () => {
+        const blocks = parseMarkdown([
+            '- top',
+            '  - nested',
+            '    - deeper',
+            '- back to top',
+        ].join('\n'));
+
+        expect(blocks).toHaveLength(1);
+        if (blocks[0]?.type !== 'list') {
+            throw new Error('Expected markdown list block');
+        }
+
+        expect(blocks[0].items.map((item) => item.depth)).toEqual([0, 1, 2, 0]);
+        expect(blocks[0].items.map((item) => item.spans[0].text)).toEqual([
+            'top', 'nested', 'deeper', 'back to top',
         ]);
     });
 

@@ -84,7 +84,8 @@ function UserTextBlock(props: {
   onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title, { source: 'option' });
+    sync.sendMessage(props.sessionId, option.title, { source: 'option' })
+      .catch((err) => console.error('[send] option message failed:', err));
   }, [props.sessionId]);
 
   const claudeUuid = props.message.claudeUuid;
@@ -113,7 +114,8 @@ function AgentTextBlock(props: {
   sessionId: string;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title, { source: 'option' });
+    sync.sendMessage(props.sessionId, option.title, { source: 'option' })
+      .catch((err) => console.error('[send] option message failed:', err));
   }, [props.sessionId]);
 
   // Hide thinking messages
